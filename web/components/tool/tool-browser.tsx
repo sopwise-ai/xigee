@@ -13,7 +13,7 @@ import {
 } from "react"
 import { useSearchParams } from "next/navigation"
 import type { Topic, Tool, ToolIndex } from "@/lib/types"
-import { sortToolIndex, TOOL_PAGE_SIZE } from "@/lib/tool"
+import { MAX_TOOL_PAGE_SIZE, sortToolIndex, TOOL_PAGE_SIZE } from "@/lib/tool"
 import {
   getSort,
   getTab,
@@ -183,7 +183,7 @@ export function ToolBrowser({
   const [details, setDetails] = useState<Map<string, Tool>>(() => new Map(initialTools.map((tool) => [tool.id, tool])))
   const [visibleState, setVisibleState] = useState(() => ({
     key: `${tab}|${resolvedSort}`,
-    count: pageSize,
+    count: Math.min(MAX_TOOL_PAGE_SIZE, Math.max(1, pageSize)),
   }))
   const [retryToken, setRetryToken] = useState(0)
   const [errorKey, setErrorKey] = useState("")
@@ -197,8 +197,9 @@ export function ToolBrowser({
     return next
   }, [details, initialTools])
 
+  const perPage = Math.min(MAX_TOOL_PAGE_SIZE, Math.max(1, pageSize))
   const listKey = `${tab}|${resolvedSort}`
-  const visibleCount = visibleState.key === listKey ? visibleState.count : pageSize
+  const visibleCount = visibleState.key === listKey ? visibleState.count : perPage
 
   // 旧部署留下的 index 可能包含已被下架的工具；API 返回数量对不上时把它们从列表剔除，
   // 否则 missingKey 永远不变、列表会卡在骨架里。
@@ -347,7 +348,7 @@ export function ToolBrowser({
               renderBrowserContent()
             )}
 
-            {filtered.length > pageSize && (
+            {filtered.length > perPage && (
               <div className="flex flex-col items-center gap-2 pt-2">
                 <p aria-live="polite" className="font-data text-xs text-muted-foreground">
                   已显示 {visibleTools.length} / {filtered.length}
@@ -359,7 +360,7 @@ export function ToolBrowser({
                     onClick={() =>
                       setVisibleState({
                         key: listKey,
-                        count: Math.min(visibleCount + pageSize, filtered.length),
+                        count: Math.min(visibleCount + perPage, filtered.length),
                       })
                     }
                   >

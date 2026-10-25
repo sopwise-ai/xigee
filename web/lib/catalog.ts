@@ -14,7 +14,7 @@ import {
   type SearchDoc,
   type SuggestionDoc,
 } from "./search"
-import { MAX_SEARCH_QUERY_LENGTH, MAX_SUGGEST_QUERY_LENGTH } from "./search-limits"
+import { MAX_FALLBACK_QUERY_LENGTH, MAX_SEARCH_QUERY_LENGTH, MAX_SUGGEST_QUERY_LENGTH } from "./search-limits"
 import type { SearchSort } from "./search-params"
 import { compareDateDesc, compareName, getToolDate } from "./tool"
 import type { Tool } from "./types"
@@ -94,7 +94,8 @@ export function searchTools(input: {
   const total = items.length
   const start = (page - 1) * pageSize
   const pageItems = items.slice(start, start + pageSize)
-  const related = total === 0 && page === 1 ? findRelated(getFallbackIndex(), query, 6) : []
+  const canFallback = query.length <= MAX_FALLBACK_QUERY_LENGTH && query.split(/\s+/).length <= 2
+  const related = total === 0 && page === 1 && canFallback ? findRelated(getFallbackIndex(), query, 6) : []
 
   return {
     items: pageItems,
@@ -106,5 +107,7 @@ export function searchTools(input: {
 
 /** 顶栏建议：只返回当前查询的前 N 条，避免把全量建议索引下发到每个页面。 */
 export function suggestTools(query: string, limit = 6): SuggestionDoc[] {
-  return suggest(getSuggestIndex(), query.trim().slice(0, MAX_SUGGEST_QUERY_LENGTH), limit)
+  const normalized = query.trim().slice(0, MAX_SUGGEST_QUERY_LENGTH)
+  if (!normalized) return []
+  return suggest(getSuggestIndex(), normalized, limit)
 }

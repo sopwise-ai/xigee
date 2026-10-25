@@ -82,10 +82,11 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
   const requestKey = `${trimmedQuery}|${sort}|${retryToken}`
   const [result, setResult] = useState<{
     key: string
+    query: string
     items: SearchDoc[]
     total: number
     related: SearchDoc[]
-  }>({ key: "", items: [], total: 0, related: [] })
+  }>({ key: "", query: "", items: [], total: 0, related: [] })
   const [errorKey, setErrorKey] = useState("")
   const [loadingMoreState, setLoadingMoreState] = useState<{ key: string; value: boolean }>({
     key: "",
@@ -100,6 +101,7 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
   )
 
   const isStale = result.key !== requestKey
+  const resultQuery = result.query
   const items = result.items
   const total = result.total
   const related = result.related
@@ -128,7 +130,7 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
       })
       .then((data) => {
         if (requestId !== requestIdRef.current) return
-        setResult({ key, items: data.items, total: data.total, related: data.related })
+        setResult({ key, query: trimmedQuery, items: data.items, total: data.total, related: data.related })
       })
       .catch((reason: unknown) => {
         if (controller.signal.aborted) return
@@ -173,7 +175,9 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
         if (!controller.signal.aborted) console.error("[search] 加载更多失败", reason)
       })
       .finally(() => {
-        setLoadingMoreState((prev) => (prev.key === key ? { key, value: false } : prev))
+        setLoadingMoreState((prev) =>
+          prev.key === key && loadMoreControllerRef.current === controller ? { key, value: false } : prev,
+        )
       })
   }, [items.length, loadingMore, requestKey, sort, total, trimmedQuery])
 
@@ -316,7 +320,7 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
           <SearchResultRow
             key={tool.id}
             tool={tool}
-            query={trimmedQuery}
+            query={resultQuery}
             topicNames={topicNames}
             last={i === items.length - 1}
           />
