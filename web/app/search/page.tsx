@@ -29,7 +29,7 @@ function ResultsSkeleton() {
         <Skeleton className="h-8 w-24 rounded-lg" />
       </div>
       <div className="overflow-hidden rounded-lg border bg-card">
-        {Array.from({ length: 12 }).map((_, i) => (
+        {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0">
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
               <Skeleton className="h-4 w-1/4 rounded" />

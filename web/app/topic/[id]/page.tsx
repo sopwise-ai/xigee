@@ -1,7 +1,7 @@
 import { type Metadata } from "next"
 import { notFound } from "next/navigation"
 import { getAllTopics, getTopicById, getToolsByTopic } from "@/lib/data"
-import { compareIndexRecommended, latestToolDate, TOOL_PAGE_SIZE, toToolIndex } from "@/lib/tool"
+import { getInitialToolIds, latestToolDate, TOOL_PAGE_SIZE, toToolIndex } from "@/lib/tool"
 import { topicIconNode } from "@/lib/topic-icon-node"
 import { formatCount, formatDate } from "@/lib/format"
 import { getBaseUrl } from "@/lib/utils"
@@ -49,10 +49,8 @@ export default async function TopicPage({ params }: Props) {
   const latestDate = latestToolDate(tools)
   const index = tools.map(toToolIndex)
   const toolById = new Map(tools.map((tool) => [tool.id, tool]))
-  const initialTools = [...index]
-    .sort(compareIndexRecommended)
-    .slice(0, TOOL_PAGE_SIZE)
-    .map((tool) => toolById.get(tool.id))
+  const initialTools = getInitialToolIds(index, TOOL_PAGE_SIZE)
+    .map((id) => toolById.get(id))
     .filter((tool): tool is Tool => Boolean(tool))
 
   const baseUrl = getBaseUrl()

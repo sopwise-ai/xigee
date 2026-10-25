@@ -75,7 +75,7 @@ export const SUGGEST_LIMIT = 6
 /** 建议索引按「数据数组身份」缓存：布局每次渲染传的是同一数组，索引只在首建时付一次代价。 */
 const suggestionIndexCache = new WeakMap<readonly SuggestionDoc[], Fuse<SuggestionDoc>>()
 
-/** 取（必要时构建）建议索引。服务端首建、客户端命中缓存，顶栏每次挂载不再重建。 */
+/** 取（必要时构建）建议索引。只在服务端使用；按数组身份缓存，避免每次请求重建。 */
 export function getSuggestionIndex(docs: readonly SuggestionDoc[]): Fuse<SuggestionDoc> {
   const cached = suggestionIndexCache.get(docs)
   if (cached) return cached

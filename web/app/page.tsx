@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import { getAllTopics, getAllTools } from "@/lib/data"
-import { compareIndexRecommended, TOOL_PAGE_SIZE, toToolIndex } from "@/lib/tool"
+import { getInitialToolIds, TOOL_PAGE_SIZE, toToolIndex } from "@/lib/tool"
 import type { Tool } from "@/lib/types"
 import { ToolBrowser } from "@/components/tool/tool-browser"
 import { Hero } from "@/components/hero/hero"
@@ -13,10 +13,8 @@ const tools = getAllTools()
 const topics = getAllTopics()
 const index = tools.map(toToolIndex)
 const toolById = new Map(tools.map((tool) => [tool.id, tool]))
-const initialTools = [...index]
-  .sort(compareIndexRecommended)
-  .slice(0, TOOL_PAGE_SIZE)
-  .map((tool) => toolById.get(tool.id))
+const initialTools = getInitialToolIds(index, TOOL_PAGE_SIZE)
+  .map((id) => toolById.get(id))
   .filter((tool): tool is Tool => Boolean(tool))
 
 export default function Home() {

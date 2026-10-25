@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { getToolsByIds } from "@/lib/catalog"
+import { MAX_TOOL_PAGE_SIZE } from "@/lib/tool"
 
-const MAX_IDS = 100
+const MAX_IDS = MAX_TOOL_PAGE_SIZE
 
 /**
  * 按 id 批量取完整工具（列表分页用）。

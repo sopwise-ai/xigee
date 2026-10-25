@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
 import { searchTools } from "@/lib/catalog"
-import { isSearchSort } from "@/lib/search-params"
 
 const DEFAULT_PAGE_SIZE = 50
 const MAX_PAGE_SIZE = 100
@@ -15,7 +14,7 @@ export async function GET(request: Request) {
 
   const result = searchTools({
     query,
-    sort: isSearchSort(sort) ? sort : "relevance",
+    sort: sort === "latest" || sort === "name" ? sort : "relevance",
     page: Number.isFinite(page) ? page : 1,
     pageSize: Number.isFinite(pageSize) ? Math.min(MAX_PAGE_SIZE, pageSize) : DEFAULT_PAGE_SIZE,
   })

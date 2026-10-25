@@ -13,7 +13,7 @@ import {
 } from "react"
 import { useSearchParams } from "next/navigation"
 import type { Topic, Tool, ToolIndex } from "@/lib/types"
-import { compareIndexDateDesc, compareIndexName, compareIndexRecommended, TOOL_PAGE_SIZE } from "@/lib/tool"
+import { sortToolIndex, TOOL_PAGE_SIZE } from "@/lib/tool"
 import {
   getSort,
   getTab,
@@ -187,6 +187,7 @@ export function ToolBrowser({
   }))
   const [retryToken, setRetryToken] = useState(0)
   const [errorKey, setErrorKey] = useState("")
+  const [unavailableIds, setUnavailableIds] = useState<ReadonlySet<string>>(() => new Set())
 
   // 首屏由 server 直接给出；后续 sort/tab 变化或增量加载时，把新拿到的完整工具并入（纯派生，无 effect）。
   const mergedDetails = useMemo(() => {
@@ -199,24 +200,14 @@ export function ToolBrowser({
   const listKey = `${tab}|${resolvedSort}`
   const visibleCount = visibleState.key === listKey ? visibleState.count : pageSize
 
+  // 旧部署留下的 index 可能包含已被下架的工具；API 返回数量对不上时把它们从列表剔除，
+  // 否则 missingKey 永远不变、列表会卡在骨架里。
+  const availableIndex = useMemo(() => index.filter((tool) => !unavailableIds.has(tool.id)), [index, unavailableIds])
+
   const filtered = useMemo(() => {
-    const list = tab === "featured" ? index.filter((tool) => tool.featured) : [...index]
-    switch (resolvedSort) {
-      case "name-asc":
-        list.sort(compareIndexName)
-        break
-      case "name-desc":
-        list.sort((a, b) => compareIndexName(b, a))
-        break
-      case "latest":
-        list.sort((a, b) => compareIndexDateDesc(a, b) || compareIndexName(a, b))
-        break
-      case "recommended":
-        list.sort(compareIndexRecommended)
-        break
-    }
-    return list
-  }, [index, tab, resolvedSort])
+    const list = tab === "featured" ? availableIndex.filter((tool) => tool.featured) : availableIndex
+    return sortToolIndex(list, resolvedSort)
+  }, [availableIndex, tab, resolvedSort])
 
   const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount])
   const missingKey = useMemo(
@@ -250,6 +241,15 @@ export function ToolBrowser({
           for (const tool of items) next.set(tool.id, tool)
           return next
         })
+        const returned = new Set(items.map((tool) => tool.id))
+        const missing = missingKey.split(",").filter((id) => id && !returned.has(id))
+        if (missing.length > 0) {
+          setUnavailableIds((prev) => {
+            const next = new Set(prev)
+            for (const id of missing) next.add(id)
+            return next
+          })
+        }
       })
       .catch((error: unknown) => {
         if (cancelled || (error instanceof DOMException && error.name === "AbortError")) return
@@ -276,6 +276,32 @@ export function ToolBrowser({
     },
     [topicMap],
   )
+
+  // 已有完整工具时保留列表，只在尾部挂加载/错误提示；只有一条都没有时才用整块骨架。
+  const renderBrowserContent = () => {
+    if (visibleTools.length === 0) {
+      return loadError ? (
+        <ToolListError onRetry={() => setRetryToken((token) => token + 1)} />
+      ) : (
+        <ToolListSkeleton view={view} count={Math.min(Math.max(visible.length, 1), 12)} />
+      )
+    }
+    return (
+      <>
+        <BrowserContent view={view} tools={visibleTools} topicOf={topicOf} />
+        {hasMissing &&
+          (loadError ? (
+            <div className="pt-3">
+              <ToolListError onRetry={() => setRetryToken((token) => token + 1)} />
+            </div>
+          ) : (
+            <div className="pt-3">
+              <ToolListSkeleton view={view} count={3} />
+            </div>
+          ))}
+      </>
+    )
+  }
 
   return (
     <div id="tool-browser" className="scroll-mt-28 md:scroll-mt-8">
@@ -315,45 +341,33 @@ export function ToolBrowser({
           <>
             {showTabs ? (
               <div role="tabpanel" id={panelId} aria-label="工具列表">
-                {hasMissing ? (
-                  loadError ? (
-                    <ToolListError onRetry={() => setRetryToken((token) => token + 1)} />
-                  ) : (
-                    <ToolListSkeleton view={view} count={Math.min(visible.length, 12)} />
-                  )
-                ) : (
-                  <BrowserContent view={view} tools={visibleTools} topicOf={topicOf} />
-                )}
+                {renderBrowserContent()}
               </div>
-            ) : hasMissing ? (
-              loadError ? (
-                <ToolListError onRetry={() => setRetryToken((token) => token + 1)} />
-              ) : (
-                <ToolListSkeleton view={view} count={Math.min(visible.length, 12)} />
-              )
             ) : (
-              <BrowserContent view={view} tools={visibleTools} topicOf={topicOf} />
+              renderBrowserContent()
             )}
 
-            <div className="flex flex-col items-center gap-2 pt-2">
-              <p className="font-data text-xs text-muted-foreground">
-                已显示 {Math.min(visible.length, filtered.length)} / {filtered.length}
-              </p>
-              {visible.length < filtered.length && (
-                <Button
-                  variant="outline"
-                  disabled={loading || hasMissing}
-                  onClick={() =>
-                    setVisibleState({
-                      key: listKey,
-                      count: Math.min(visibleCount + pageSize, filtered.length),
-                    })
-                  }
-                >
-                  {loading ? "加载中…" : `加载更多（剩余 ${filtered.length - visible.length}）`}
-                </Button>
-              )}
-            </div>
+            {filtered.length > pageSize && (
+              <div className="flex flex-col items-center gap-2 pt-2">
+                <p aria-live="polite" className="font-data text-xs text-muted-foreground">
+                  已显示 {visibleTools.length} / {filtered.length}
+                </p>
+                {visible.length < filtered.length && (
+                  <Button
+                    variant="outline"
+                    disabled={loading || hasMissing}
+                    onClick={() =>
+                      setVisibleState({
+                        key: listKey,
+                        count: Math.min(visibleCount + pageSize, filtered.length),
+                      })
+                    }
+                  >
+                    {loading ? "加载中…" : `加载更多（剩余 ${filtered.length - visible.length}）`}
+                  </Button>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -363,7 +377,10 @@ export function ToolBrowser({
 
 function ToolListError({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-10 text-sm text-muted-foreground">
+    <div
+      role="alert"
+      className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-10 text-sm text-muted-foreground"
+    >
       <span>加载失败，请检查网络后重试。</span>
       <Button variant="outline" onClick={onRetry}>
         重试
@@ -376,7 +393,7 @@ function ToolListSkeleton({ view, count }: { view: ViewMode; count: number }) {
   const items = Array.from({ length: Math.max(1, count) })
   if (view === "list") {
     return (
-      <div className="overflow-hidden rounded-lg border bg-card">
+      <div role="status" aria-label="加载中" aria-busy="true" className="overflow-hidden rounded-lg border bg-card">
         {items.map((_, index) => (
           <div key={index} className="flex items-center gap-3 border-b border-border px-4 py-3.5 last:border-b-0">
             <div className="min-w-0 flex-1">
@@ -390,7 +407,7 @@ function ToolListSkeleton({ view, count }: { view: ViewMode; count: number }) {
     )
   }
   return (
-    <div className="tool-card-grid">
+    <div role="status" aria-label="加载中" aria-busy="true" className="tool-card-grid">
       {items.map((_, index) => (
         <div key={index} className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
           <Skeleton className="h-5 w-2/3" />
