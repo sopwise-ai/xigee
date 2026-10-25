@@ -933,5 +933,15 @@
     "pricing": "freemium",
     "featured": false,
     "createdAt": "2024-11-01"
+  },
+  {
+    "id": "agent-qa",
+    "name": "agent-qa",
+    "description": "通过 CLI 和 MCP 用自然语言测试网页、Android 和 iOS，具备持久记忆与经验证的自我改进能力；需配置模型访问，模型费用另计。",
+    "url": "https://vostride.com",
+    "topics": ["code-tools", "automation"],
+    "tags": ["测试", "MCP", "记忆"],
+    "pricing": "free",
+    "featured": false
   }
 ]

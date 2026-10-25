@@ -15,7 +15,7 @@
     "id": "code-tools",
     "name": "代码工具",
     "icon": "💻",
-    "toolCount": 7
+    "toolCount": 8
   },
   {
     "id": "writing-tools",
@@ -81,7 +81,7 @@
     "id": "automation",
     "name": "自动化",
     "icon": "⚙️",
-    "toolCount": 3
+    "toolCount": 4
   },
   {
     "id": "chatbot",
