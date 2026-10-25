@@ -9,7 +9,7 @@ const meta = {
   title: "Search/SearchResults",
   component: SearchResults,
   tags: ["autodocs"],
-  args: { tools: mockTools, featured, topics: mockTopics, topicCounts: mockTopicCounts },
+  args: { featured, topics: mockTopics, topicCounts: mockTopicCounts },
   decorators: [
     (Story) => (
       <Suspense fallback={<div className="text-sm text-muted-foreground">加载中…</div>}>

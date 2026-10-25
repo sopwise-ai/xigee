@@ -1,4 +1,5 @@
 import { buildSuggestionDocs } from "@/lib/search"
+import { toToolIndex } from "@/lib/tool"
 import type { Topic, Tool } from "@/lib/types"
 
 /** Storybook 共享 mock 数据（仅用于 stories，不参与生产构建）。 */
@@ -79,6 +80,8 @@ export const mockTools: Tool[] = [
 ]
 
 export const mockSuggestions = ["对话助手", "图像生成", "代码工具", "写作工具"]
+
+export const mockToolIndex = mockTools.map(toToolIndex)
 
 /** 顶栏搜索建议数据（由工具 + 主题名展开，与根布局下发的同源）。 */
 export const mockSuggestionDocs = buildSuggestionDocs(

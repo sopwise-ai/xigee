@@ -1,0 +1,25 @@
+import { describe, expect, it } from "vitest"
+import { getToolsByIds, searchTools, suggestTools } from "./catalog"
+
+describe("catalog", () => {
+  it("按 id 取完整工具，保持请求顺序并忽略未知 id", () => {
+    const tools = getToolsByIds(["chatgpt", "not-a-real-tool", "opencode"])
+    expect(tools.map((tool) => tool.name)).toEqual(["ChatGPT", "OpenCode"])
+    expect(tools[0].description).toBeTruthy()
+    expect(tools[0].url).toMatch(/^https:\/\//)
+  })
+
+  it("服务端搜索返回分页结果与总数", () => {
+    const page = searchTools({ query: "open", sort: "relevance", page: 1, pageSize: 5 })
+    expect(page.total).toBeGreaterThan(0)
+    expect(page.items.length).toBe(Math.min(5, page.total))
+    expect(page.hasMore).toBe(page.total > 5)
+  })
+
+  it("建议最多返回 6 条并包含名称", () => {
+    const items = suggestTools("open", 6)
+    expect(items.length).toBeGreaterThan(0)
+    expect(items.length).toBeLessThanOrEqual(6)
+    expect(items.every((item) => item.name.length > 0)).toBe(true)
+  })
+})

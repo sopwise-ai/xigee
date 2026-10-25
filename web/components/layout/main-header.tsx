@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
+import { Suspense, useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import Link from "next/link"
 import { Search, Settings, X } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
@@ -11,13 +11,7 @@ import { Kbd } from "@/components/ui/kbd"
 import ThemeToggle from "@/components/layout/theme-toggle"
 import { SearchSuggestions, suggestionOptionId } from "@/components/search/search-suggestions"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
-import {
-  getSuggestionIndex,
-  suggest,
-  SEARCH_FOCUS_RESULTS_EVENT,
-  SEARCH_RESULT_SELECTOR,
-  type SuggestionDoc,
-} from "@/lib/search"
+import { SEARCH_FOCUS_RESULTS_EVENT, SEARCH_RESULT_SELECTOR, type SuggestionDoc } from "@/lib/search"
 import { searchPageHref, writeSearchQuery } from "@/lib/url"
 import type { Topic } from "@/lib/types"
 
@@ -57,11 +51,6 @@ function QuerySync({
   return null
 }
 
-interface SearchFieldProps {
-  /** 顶栏建议数据：由根布局（server）下发，客户端零请求即可出建议。 */
-  suggestions: readonly SuggestionDoc[]
-}
-
 /**
  * 主区顶栏搜索框：全站按 `/` 聚焦（非输入态）。
  *
@@ -71,7 +60,7 @@ interface SearchFieldProps {
  * - **`<form action="/search">` 兜底**：hydration 完成前（首屏 3 秒级）按回车走原生 GET
  *   提交跳到 `/search?q=…`，而不是像旧版那样毫无反应。
  */
-function SearchField({ suggestions }: SearchFieldProps) {
+function SearchField() {
   const inputRef = useRef<HTMLInputElement>(null)
   const rootRef = useRef<HTMLFormElement>(null)
   const router = useRouter()
@@ -92,14 +81,26 @@ function SearchField({ suggestions }: SearchFieldProps) {
 
   const isSearchPage = pathname === "/search"
   const deferred = useDebouncedValue(draft, SEARCH_DEBOUNCE_MS)
+  const [suggestions, setSuggestions] = useState<{ query: string; items: readonly SuggestionDoc[] }>({
+    query: "",
+    items: [],
+  })
 
-  // 建议索引按数据身份缓存：布局每次渲染拿到的是同一数组，索引只建一次
-  const suggestionIndex = useMemo(() => getSuggestionIndex(suggestions), [suggestions])
-  // 建议不吃防抖：Fuse 对百来条数据是亚毫秒级，直接给即时反馈
-  const items = useMemo(
-    () => (isSearchPage ? [] : suggest(suggestionIndex, draft)),
-    [isSearchPage, suggestionIndex, draft],
-  )
+  // 建议按查询串走 API：根布局不再下发 6000+ 条索引，首访每个页面都能少约 170KB(gzip)。
+  useEffect(() => {
+    if (isSearchPage || !focused || !draft.trim()) return
+    const controller = new AbortController()
+    fetch(`/api/suggest?q=${encodeURIComponent(draft)}`, { signal: controller.signal })
+      .then((response) => (response.ok ? (response.json() as Promise<SuggestionDoc[]>) : []))
+      .then((next) => setSuggestions({ query: draft, items: next }))
+      .catch(() => {
+        /* 建议是增强功能：请求失败时静默收起，不影响输入与提交 */
+      })
+    return () => controller.abort()
+  }, [draft, focused, isSearchPage])
+
+  // 只展示与当前输入匹配的那一批，避免上一轮请求的结果短暂串台。
+  const items = suggestions.query === draft ? suggestions.items : []
 
   const listboxId = "search-suggestions"
   const open = focused && !dismissed && items.length > 0
@@ -339,11 +340,10 @@ function resolveCrumbs(pathname: string, topics: readonly Topic[]): Crumb[] {
 interface MainHeaderProps {
   className?: string
   topics: readonly Topic[]
-  suggestions: readonly SuggestionDoc[]
 }
 
 /** 主区顶栏：左侧路由面包屑，右侧搜索 + 设置/主题入口。 */
-export function MainHeader({ className, topics, suggestions }: MainHeaderProps) {
+export function MainHeader({ className, topics }: MainHeaderProps) {
   const pathname = usePathname()
   const crumbs = resolveCrumbs(pathname, topics)
 
@@ -374,7 +374,7 @@ export function MainHeader({ className, topics, suggestions }: MainHeaderProps) 
             })}
           </ol>
         </nav>
-        <SearchField suggestions={suggestions} />
+        <SearchField />
         <Button variant="outline" size="icon" aria-label="设置" title="设置" render={<Link href="/settings" />}>
           <Settings />
         </Button>

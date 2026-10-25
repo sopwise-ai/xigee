@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import { Suspense } from "react"
-import { getAllTopics, getAllTools, getTopicCounts, getFeaturedTools } from "@/lib/data"
+import { getAllTopics, getTopicCounts, getFeaturedTools } from "@/lib/data"
 import { pageShell } from "@/lib/layout"
 import { SearchResults } from "@/components/search/search-results"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -12,13 +12,12 @@ export const metadata: Metadata = {
   robots: { index: false, follow: true },
 }
 
-const allTools = getAllTools()
 const featured = getFeaturedTools()
 const topics = getAllTopics()
 const topicCounts = getTopicCounts()
 
 /**
- * 搜索结果为客户端计算（query 来自 URL），SSR 呈现同构骨架，避免「加载中…→结果」突兀跳变。
+ * 搜索由 /api/search 服务端计算（query 来自 URL），SSR 呈现同构骨架，避免「加载中…→结果」突兀跳变。
  *
  * 骨架形状要与最终布局对齐（计数行 + 结果列表），否则 hydrate 完成时会出现一次明显的位置跳变。
  */
@@ -48,7 +47,7 @@ export default function SearchPage() {
     <div className={pageShell("content", "flex flex-col gap-4")}>
       <h1 className="text-2xl font-semibold tracking-tight">搜索</h1>
       <Suspense fallback={<ResultsSkeleton />}>
-        <SearchResults tools={allTools} featured={featured} topics={topics} topicCounts={topicCounts} />
+        <SearchResults featured={featured} topics={topics} topicCounts={topicCounts} />
       </Suspense>
     </div>
   )
