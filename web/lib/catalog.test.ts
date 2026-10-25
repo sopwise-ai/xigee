@@ -16,6 +16,21 @@ describe("catalog", () => {
     expect(page.hasMore).toBe(page.total > 5)
   })
 
+  it("长 query 的无结果不再触发高成本 fallback", () => {
+    const page = searchTools({
+      query: "z".repeat(32),
+      sort: "relevance",
+      page: 1,
+      pageSize: 5,
+    })
+    expect(page.total).toBe(0)
+    expect(page.related).toEqual([])
+  })
+
+  it("空建议查询直接返回空数组", () => {
+    expect(suggestTools("   ")).toEqual([])
+  })
+
   it("建议最多返回 6 条并包含名称", () => {
     const items = suggestTools("open", 6)
     expect(items.length).toBeGreaterThan(0)
