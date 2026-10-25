@@ -1,7 +1,11 @@
+import type { SortMode } from "./tool-query"
 import type { Tool, ToolIndex } from "./types"
 
 /** 列表首屏与「加载更多」的每页条数。 */
 export const TOOL_PAGE_SIZE = 60
+
+/** 单次 /api/tools 最多返回的完整工具数（与列表每页上限共用）。 */
+export const MAX_TOOL_PAGE_SIZE = 100
 
 export function getToolDate(tool: Tool): string {
   return tool.publishedAt ?? tool.createdAt ?? ""
@@ -12,7 +16,6 @@ export function toToolIndex(tool: Tool): ToolIndex {
   return {
     id: tool.id,
     name: tool.name,
-    topics: tool.topics,
     featured: tool.featured,
     date: getToolDate(tool),
   }
@@ -75,6 +78,46 @@ export function compareIndexRecommended(a: ToolIndex, b: ToolIndex): number {
   const dateCmp = compareIndexDateDesc(a, b)
   if (dateCmp !== 0) return dateCmp
   return compareIndexName(a, b)
+}
+
+/** 对轻量索引排序（返回新数组，不改入参）。 */
+export function sortToolIndex(index: readonly ToolIndex[], sort: SortMode): ToolIndex[] {
+  const list = [...index]
+  switch (sort) {
+    case "name-asc":
+      list.sort(compareIndexName)
+      break
+    case "name-desc":
+      list.sort((a, b) => compareIndexName(b, a))
+      break
+    case "latest":
+      list.sort((a, b) => compareIndexDateDesc(a, b) || compareIndexName(a, b))
+      break
+    case "recommended":
+      list.sort(compareIndexRecommended)
+      break
+  }
+  return list
+}
+
+/**
+ * 首屏预取的完整工具集合：覆盖四种排序的前 N 条 + 精选前 N 条。
+ *
+ * 这样 URL/本地偏好落在非默认排序时，客户端也有现成详情可渲染，不会先用骨架清空 SSR 内容、
+ * 再额外发一次 `/api/tools`。总量最多 5×pageSize，详情体积仍远小于全量工具。
+ */
+export function getInitialToolIds(index: readonly ToolIndex[], pageSize = TOOL_PAGE_SIZE): string[] {
+  const ids = new Set<string>()
+  for (const sort of ["recommended", "latest", "name-asc", "name-desc"] as const) {
+    for (const tool of sortToolIndex(index, sort).slice(0, pageSize)) ids.add(tool.id)
+  }
+  for (const tool of sortToolIndex(
+    index.filter((item) => item.featured),
+    "recommended",
+  ).slice(0, pageSize)) {
+    ids.add(tool.id)
+  }
+  return [...ids]
 }
 
 /** 一组工具中最新的日期（原始串）；无日期返回 null。按日期部分比较，容忍格式差异。 */

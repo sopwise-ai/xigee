@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
-import { render, act, screen, fireEvent } from "@testing-library/react"
+import { render, act, screen, fireEvent, waitFor } from "@testing-library/react"
 import { ToolBrowser } from "./tool-browser"
 import { toToolIndex } from "@/lib/tool"
 import type { Tool } from "@/lib/types"
@@ -122,7 +122,7 @@ describe("ToolBrowser 分页加载", () => {
     expect(screen.getAllByText(/Tool [a-e]/)).toHaveLength(2)
     fireEvent.click(screen.getByRole("button", { name: /加载更多/ }))
 
-    expect(await screen.findAllByText(/Tool [a-e]/)).toHaveLength(4)
+    await waitFor(() => expect(screen.getAllByText(/Tool [a-e]/)).toHaveLength(4))
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/tools?ids=c%2Cd",
       expect.objectContaining({ signal: expect.anything() }),

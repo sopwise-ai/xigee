@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { SearchResults } from "./search-results"
 import { mockTopics, mockTopicCounts, mockTools } from "@/.storybook/fixtures"
 import { addRecentSearch } from "@/lib/recent-searches"
@@ -78,10 +78,10 @@ describe("SearchResults", () => {
   it("切换排序原地写 URL（replaceState，不发导航）", async () => {
     nav.search = "?q=对话"
     renderResults()
-    await screen.findByRole("status")
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("找到 2 个"))
 
     fireEvent.click(screen.getByRole("button", { name: "排序" }))
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /最新/ }))
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: /最新/ }))
     expect(new URLSearchParams(window.location.search).get("sort")).toBe("latest")
   })
 

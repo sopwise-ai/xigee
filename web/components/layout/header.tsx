@@ -9,6 +9,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { pageShell } from "@/lib/layout"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
+import { MAX_SEARCH_QUERY_LENGTH } from "@/lib/search-limits"
 import { searchPageHref, writeSearchQuery } from "@/lib/url"
 import ThemeToggle from "./theme-toggle"
 import { Wordmark } from "@/components/brand/wordmark"
@@ -72,6 +73,7 @@ function MobileSearchInput({ onClose }: { onClose: () => void }) {
           autoFocus
           name="q"
           type="search"
+          maxLength={MAX_SEARCH_QUERY_LENGTH}
           enterKeyHint="search"
           aria-label="搜索 AI 工具"
           autoComplete="off"

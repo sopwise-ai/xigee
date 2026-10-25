@@ -23,7 +23,6 @@ export interface Topic {
 export interface ToolIndex {
   id: string
   name: string
-  topics: string[]
   featured?: boolean
   /** `publishedAt ?? createdAt`，用于「最新」排序；空串表示没有日期。 */
   date?: string

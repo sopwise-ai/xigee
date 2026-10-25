@@ -12,6 +12,7 @@ import ThemeToggle from "@/components/layout/theme-toggle"
 import { SearchSuggestions, suggestionOptionId } from "@/components/search/search-suggestions"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { SEARCH_FOCUS_RESULTS_EVENT, SEARCH_RESULT_SELECTOR, type SuggestionDoc } from "@/lib/search"
+import { MAX_SEARCH_QUERY_LENGTH } from "@/lib/search-limits"
 import { searchPageHref, writeSearchQuery } from "@/lib/url"
 import type { Topic } from "@/lib/types"
 
@@ -87,17 +88,18 @@ function SearchField() {
   })
 
   // 建议按查询串走 API：根布局不再下发 6000+ 条索引，首访每个页面都能少约 170KB(gzip)。
+  // 用与「边打边搜」相同的防抖，既保留即时感，也避免每个按键都打一次 Fuse。
   useEffect(() => {
-    if (isSearchPage || !focused || !draft.trim()) return
+    if (isSearchPage || !focused || !deferred.trim()) return
     const controller = new AbortController()
-    fetch(`/api/suggest?q=${encodeURIComponent(draft)}`, { signal: controller.signal })
+    fetch(`/api/suggest?q=${encodeURIComponent(deferred)}`, { signal: controller.signal })
       .then((response) => (response.ok ? (response.json() as Promise<SuggestionDoc[]>) : []))
-      .then((next) => setSuggestions({ query: draft, items: next }))
+      .then((next) => setSuggestions({ query: deferred, items: next }))
       .catch(() => {
         /* 建议是增强功能：请求失败时静默收起，不影响输入与提交 */
       })
     return () => controller.abort()
-  }, [draft, focused, isSearchPage])
+  }, [deferred, focused, isSearchPage])
 
   // 只展示与当前输入匹配的那一批，避免上一轮请求的结果短暂串台。
   const items = suggestions.query === draft ? suggestions.items : []
@@ -270,6 +272,7 @@ function SearchField() {
           ref={inputRef}
           name="q"
           type="search"
+          maxLength={MAX_SEARCH_QUERY_LENGTH}
           enterKeyHint="search"
           role="combobox"
           aria-label="搜索 AI 工具"

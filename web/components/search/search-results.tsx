@@ -87,29 +87,29 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
     related: SearchDoc[]
   }>({ key: "", items: [], total: 0, related: [] })
   const [errorKey, setErrorKey] = useState("")
-  const [pageState, setPageState] = useState<{ key: string; page: number }>({ key: "", page: 1 })
   const [loadingMoreState, setLoadingMoreState] = useState<{ key: string; value: boolean }>({
     key: "",
     value: false,
   })
   const requestIdRef = useRef(0)
+  const loadMoreControllerRef = useRef<AbortController | null>(null)
 
   const topicNames = useMemo(
     () => Object.fromEntries(topics.map((c) => [c.id, c.name])) as Record<string, string>,
     [topics],
   )
 
-  const current = result.key === requestKey ? result : null
-  const items = current?.items ?? []
-  const total = current?.total ?? 0
-  const related = current?.related ?? []
-  const loading = Boolean(trimmedQuery) && !current && errorKey !== requestKey
-  const error = Boolean(trimmedQuery) && !current && errorKey === requestKey
-  const page = pageState.key === requestKey ? pageState.page : 1
+  const isStale = result.key !== requestKey
+  const items = result.items
+  const total = result.total
+  const related = result.related
+  const loading = Boolean(trimmedQuery) && isStale && errorKey !== requestKey
+  const error = Boolean(trimmedQuery) && isStale && errorKey === requestKey
   const loadingMore = loadingMoreState.key === requestKey && loadingMoreState.value
 
   useEffect(() => {
     if (!trimmedQuery) return
+    loadMoreControllerRef.current?.abort()
 
     const requestId = ++requestIdRef.current
     const controller = new AbortController()
@@ -140,12 +140,16 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
     return () => controller.abort()
   }, [requestKey, trimmedQuery, sort])
 
+  useEffect(() => () => loadMoreControllerRef.current?.abort(), [])
+
   const loadMore = useCallback(() => {
     if (loadingMore || items.length >= total) return
     const key = requestKey
     const requestId = requestIdRef.current
-    const nextPage = page + 1
+    // 由已加载条数推导下一页，不依赖会跨 query 残留的 page state。
+    const nextPage = Math.floor(items.length / PAGE_SIZE) + 1
     const controller = new AbortController()
+    loadMoreControllerRef.current = controller
     const params = new URLSearchParams({
       q: trimmedQuery,
       sort,
@@ -164,15 +168,14 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
         setResult((prev) =>
           prev.key !== key ? prev : { ...prev, items: [...prev.items, ...data.items], total: data.total },
         )
-        setPageState({ key, page: nextPage })
       })
       .catch((reason: unknown) => {
         if (!controller.signal.aborted) console.error("[search] 加载更多失败", reason)
       })
       .finally(() => {
-        if (requestId === requestIdRef.current) setLoadingMoreState({ key, value: false })
+        setLoadingMoreState((prev) => (prev.key === key ? { key, value: false } : prev))
       })
-  }, [items.length, loadingMore, page, requestKey, sort, total, trimmedQuery])
+  }, [items.length, loadingMore, requestKey, sort, total, trimmedQuery])
 
   // 不同搜索词 → 不同推荐；同 URL 稳定。种子两端一致，故无重排闪烁。
   const displayedFeatured = useMemo(() => shuffleWithSeed(featured, hashString(trimmedQuery)), [featured, trimmedQuery])
@@ -186,8 +189,8 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
   // 否则会把「c / cl / cla…」这些打字中间态灌满历史。
   const settledQuery = useDebouncedValue(trimmedQuery, SETTLE_MS)
   useEffect(() => {
-    if (settledQuery && total > 0) addRecentSearch(settledQuery)
-  }, [settledQuery, total])
+    if (settledQuery && !isStale && total > 0) addRecentSearch(settledQuery)
+  }, [settledQuery, isStale, total])
 
   const patch = useCallback(
     (next: Record<string, string | null>) => {
@@ -235,9 +238,9 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
     )
   }
 
-  if (loading) {
+  if (loading && items.length === 0) {
     return (
-      <div className="flex flex-col gap-3" aria-busy="true" aria-label="搜索中">
+      <div role="status" className="flex flex-col gap-3" aria-busy="true" aria-label="搜索中">
         <Skeleton className="h-5 w-52 rounded" />
         <div className="overflow-hidden rounded-lg border bg-card">
           {Array.from({ length: 6 }).map((_, index) => (
@@ -253,7 +256,10 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
 
   if (error) {
     return (
-      <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-10 text-sm text-muted-foreground">
+      <div
+        role="alert"
+        className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-10 text-sm text-muted-foreground"
+      >
         <span>搜索失败，请检查网络后重试。</span>
         <Button variant="outline" onClick={() => setRetryToken((token) => token + 1)}>
           重试
@@ -280,12 +286,20 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
   const currentSort = SEARCH_SORT_OPTIONS.find((o) => o.value === sort) ?? SEARCH_SORT_OPTIONS[0]
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3" aria-busy={loading}>
       <div className="flex items-center justify-between gap-3">
         {/* 中文句子里的元素切分不要留空格：`{" "}` 或行内尾随空格会渲染成「个与 「对话」 相关」 */}
         <p role="status" aria-live="polite" className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-          找到 <span className="font-data font-medium text-foreground">{formatCount(total)}</span> 个与
-          <span className="font-medium text-foreground">「{trimmedQuery}」</span>相关的结果
+          {loading ? (
+            <>
+              正在搜索<span className="font-medium text-foreground">「{trimmedQuery}」</span>…
+            </>
+          ) : (
+            <>
+              找到 <span className="font-data font-medium text-foreground">{formatCount(total)}</span> 个与
+              <span className="font-medium text-foreground">「{trimmedQuery}」</span>相关的结果
+            </>
+          )}
         </p>
         <FilterSelect
           label="排序"
@@ -309,7 +323,7 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
         ))}
       </div>
 
-      {items.length < total && (
+      {!loading && items.length < total && (
         <div className="flex flex-col items-center gap-2 pt-1">
           <p className="font-data text-xs text-muted-foreground">
             已显示 {items.length} / {formatCount(total)}
