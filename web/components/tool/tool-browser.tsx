@@ -12,8 +12,8 @@ import {
   type ReactNode,
 } from "react"
 import { useSearchParams } from "next/navigation"
-import type { Topic, Tool } from "@/lib/types"
-import { compareDateDesc, compareName, compareRecommended, getToolDate } from "@/lib/tool"
+import type { Topic, Tool, ToolIndex } from "@/lib/types"
+import { compareIndexDateDesc, compareIndexName, compareIndexRecommended, TOOL_PAGE_SIZE } from "@/lib/tool"
 import {
   getSort,
   getTab,
@@ -37,10 +37,16 @@ import {
 } from "@/lib/tool-query"
 import { useMounted } from "@/hooks/use-mounted"
 import { PackageOpen } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
 import Link from "next/link"
 
 interface ToolBrowserProps {
-  tools: readonly Tool[]
+  /** 轻量索引：只含排序/筛选需要的字段，完整工具按页从 /api/tools 取。 */
+  index: readonly ToolIndex[]
+  /** 首屏已由 server 渲染好的完整工具（默认推荐序前 N 条）。 */
+  initialTools: readonly Tool[]
+  /** 每页条数，默认 60。 */
+  pageSize?: number
   emptyTitle?: string
   emptyDescription?: string
   defaultView?: ViewMode
@@ -80,7 +86,9 @@ function getUrlSearch(): string {
 }
 
 export function ToolBrowser({
-  tools,
+  index,
+  initialTools,
+  pageSize = TOOL_PAGE_SIZE,
   emptyTitle,
   emptyDescription,
   defaultView = "grid",
@@ -172,24 +180,91 @@ export function ToolBrowser({
     setTabOverride(t)
   }
 
+  const [details, setDetails] = useState<Map<string, Tool>>(() => new Map(initialTools.map((tool) => [tool.id, tool])))
+  const [visibleState, setVisibleState] = useState(() => ({
+    key: `${tab}|${resolvedSort}`,
+    count: pageSize,
+  }))
+  const [retryToken, setRetryToken] = useState(0)
+  const [errorKey, setErrorKey] = useState("")
+
+  // 首屏由 server 直接给出；后续 sort/tab 变化或增量加载时，把新拿到的完整工具并入（纯派生，无 effect）。
+  const mergedDetails = useMemo(() => {
+    if (initialTools.every((tool) => details.has(tool.id))) return details
+    const next = new Map(details)
+    for (const tool of initialTools) next.set(tool.id, tool)
+    return next
+  }, [details, initialTools])
+
+  const listKey = `${tab}|${resolvedSort}`
+  const visibleCount = visibleState.key === listKey ? visibleState.count : pageSize
+
   const filtered = useMemo(() => {
-    const list = tab === "featured" ? tools.filter((p) => p.featured) : [...tools]
+    const list = tab === "featured" ? index.filter((tool) => tool.featured) : [...index]
     switch (resolvedSort) {
       case "name-asc":
-        list.sort(compareName)
+        list.sort(compareIndexName)
         break
       case "name-desc":
-        list.sort((a, b) => compareName(b, a))
+        list.sort((a, b) => compareIndexName(b, a))
         break
       case "latest":
-        list.sort((a, b) => compareDateDesc(getToolDate(a), getToolDate(b)))
+        list.sort((a, b) => compareIndexDateDesc(a, b) || compareIndexName(a, b))
         break
       case "recommended":
-        list.sort(compareRecommended)
+        list.sort(compareIndexRecommended)
         break
     }
     return list
-  }, [tools, tab, resolvedSort])
+  }, [index, tab, resolvedSort])
+
+  const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount])
+  const missingKey = useMemo(
+    () =>
+      visible
+        .filter((tool) => !mergedDetails.has(tool.id))
+        .map((tool) => tool.id)
+        .join(","),
+    [visible, mergedDetails],
+  )
+  const hasMissing = missingKey.length > 0
+  const fetchKey = hasMissing ? `${missingKey}|${retryToken}` : ""
+  const loading = hasMissing && errorKey !== fetchKey
+  const loadError = hasMissing && errorKey === fetchKey
+
+  // 只取当前页缺失的完整字段；排序/筛选仍由轻量索引在客户端完成，交互不退化。
+  // loading/error 都由 fetchKey 派生，effect 内不直接 setState，避免级联渲染。
+  useEffect(() => {
+    if (!missingKey) return
+    const controller = new AbortController()
+    let cancelled = false
+    fetch(`/api/tools?ids=${encodeURIComponent(missingKey)}`, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        return response.json() as Promise<Tool[]>
+      })
+      .then((items) => {
+        if (cancelled) return
+        setDetails((prev) => {
+          const next = new Map(prev)
+          for (const tool of items) next.set(tool.id, tool)
+          return next
+        })
+      })
+      .catch((error: unknown) => {
+        if (cancelled || (error instanceof DOMException && error.name === "AbortError")) return
+        setErrorKey(fetchKey)
+      })
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [fetchKey, missingKey])
+
+  const visibleTools = useMemo(
+    () => visible.map((tool) => mergedDetails.get(tool.id)).filter((tool): tool is Tool => Boolean(tool)),
+    [visible, mergedDetails],
+  )
 
   // 主题 id→名称/图标 查找表（O(1)/次）；缺 topics 时返回空
   const topicMap = useMemo(() => new Map((topics ?? []).map((c) => [c.id, c])), [topics])
@@ -236,14 +311,103 @@ export function ToolBrowser({
               </Button>
             </EmptyContent>
           </Empty>
-        ) : showTabs ? (
-          <div role="tabpanel" id={panelId} aria-label="工具列表">
-            <BrowserContent view={view} tools={filtered} topicOf={topicOf} />
-          </div>
         ) : (
-          <BrowserContent view={view} tools={filtered} topicOf={topicOf} />
+          <>
+            {showTabs ? (
+              <div role="tabpanel" id={panelId} aria-label="工具列表">
+                {hasMissing ? (
+                  loadError ? (
+                    <ToolListError onRetry={() => setRetryToken((token) => token + 1)} />
+                  ) : (
+                    <ToolListSkeleton view={view} count={Math.min(visible.length, 12)} />
+                  )
+                ) : (
+                  <BrowserContent view={view} tools={visibleTools} topicOf={topicOf} />
+                )}
+              </div>
+            ) : hasMissing ? (
+              loadError ? (
+                <ToolListError onRetry={() => setRetryToken((token) => token + 1)} />
+              ) : (
+                <ToolListSkeleton view={view} count={Math.min(visible.length, 12)} />
+              )
+            ) : (
+              <BrowserContent view={view} tools={visibleTools} topicOf={topicOf} />
+            )}
+
+            <div className="flex flex-col items-center gap-2 pt-2">
+              <p className="font-data text-xs text-muted-foreground">
+                已显示 {Math.min(visible.length, filtered.length)} / {filtered.length}
+              </p>
+              {visible.length < filtered.length && (
+                <Button
+                  variant="outline"
+                  disabled={loading || hasMissing}
+                  onClick={() =>
+                    setVisibleState({
+                      key: listKey,
+                      count: Math.min(visibleCount + pageSize, filtered.length),
+                    })
+                  }
+                >
+                  {loading ? "加载中…" : `加载更多（剩余 ${filtered.length - visible.length}）`}
+                </Button>
+              )}
+            </div>
+          </>
         )}
       </div>
+    </div>
+  )
+}
+
+function ToolListError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-10 text-sm text-muted-foreground">
+      <span>加载失败，请检查网络后重试。</span>
+      <Button variant="outline" onClick={onRetry}>
+        重试
+      </Button>
+    </div>
+  )
+}
+
+function ToolListSkeleton({ view, count }: { view: ViewMode; count: number }) {
+  const items = Array.from({ length: Math.max(1, count) })
+  if (view === "list") {
+    return (
+      <div className="overflow-hidden rounded-lg border bg-card">
+        {items.map((_, index) => (
+          <div key={index} className="flex items-center gap-3 border-b border-border px-4 py-3.5 last:border-b-0">
+            <div className="min-w-0 flex-1">
+              <Skeleton className="h-5 w-40 max-w-full" />
+              <Skeleton className="mt-2 h-4 w-3/4 max-w-full" />
+            </div>
+            <Skeleton className="h-5 w-16" />
+          </div>
+        ))}
+      </div>
+    )
+  }
+  return (
+    <div className="tool-card-grid">
+      {items.map((_, index) => (
+        <div key={index} className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
+          <Skeleton className="h-5 w-2/3" />
+          <div className="flex flex-col gap-1.5">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-5/6" />
+          </div>
+          <div className="flex gap-1">
+            <Skeleton className="h-5 w-16" />
+            <Skeleton className="h-5 w-12" />
+          </div>
+          <div className="mt-auto flex items-center justify-between">
+            <Skeleton className="h-5 w-14" />
+            <Skeleton className="h-4 w-24" />
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

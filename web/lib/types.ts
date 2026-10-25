@@ -14,6 +14,21 @@ export interface Topic {
   toolCount?: number
 }
 
+/**
+ * 列表索引所需的工具元数据。
+ *
+ * 首页/主题页只把这份轻量索引下发给客户端排序与筛选；完整字段（描述、标签、价格、URL）
+ * 按页通过 `/api/tools?ids=` 取，避免一次把 6000+ 条完整工具塞进 RSC payload。
+ */
+export interface ToolIndex {
+  id: string
+  name: string
+  topics: string[]
+  featured?: boolean
+  /** `publishedAt ?? createdAt`，用于「最新」排序；空串表示没有日期。 */
+  date?: string
+}
+
 /** 工具（后端 `xg_tool` / 导出 `tools.json` 的元素）。 */
 export interface Tool {
   id: string

@@ -11,13 +11,13 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## 项目概述
 
-纯前端 SSG 站点，基于 `data/topics.json` + `data/tools.json` 驱动数据，部署于 Vercel。
+页面以 SSG 为主，列表分页/搜索/建议按需走同源 API；数据源仍是 `data/topics.json` + `data/tools.json`，部署于 Vercel。
 
 ## 技术栈
 
 - Next.js 16 (App Router) + React 19 + TypeScript 5
 - Tailwind CSS 4 + shadcn/ui (base-nova, neutral)
-- fuse.js（客户端模糊搜索）、lucide-react（界面图标；**主题图标是 emoji**，见下）
+- fuse.js（服务端搜索索引，客户端只拿当前页结果）、lucide-react（界面图标；**主题图标是 emoji**，见下）
 - Vitest + Testing Library（单元测试）
 - pnpm 12 + Node 24
 
@@ -45,7 +45,7 @@ pnpm analyze      # 分析构建产物体积
 ## 目录约定
 
 ```
-app/          # App Router 页面 + 路由级元数据 (sitemap/robots/manifest/og)
+app/          # App Router 页面 + 路由级元数据 (sitemap/robots/manifest/og) + 按需数据 API
 components/   # UI 组件 (ui/layout/tool/search/history；主题浏览网格在 search/topic-browse.tsx)
 lib/          # 工具函数与类型 (data 读取只在 server 端)
 data/         # 数据源 (topics.json + tools.json)
@@ -53,8 +53,17 @@ data/         # 数据源 (topics.json + tools.json)
 
 ## 数据流
 
-`topics.json` + `tools.json` → `lib/data.ts`（server 端 import）→ 页面 Server Component → props 传入 client 组件。
-client 组件不直接 import 数据文件，避免全量内联 bundle。
+`topics.json` + `tools.json` → `lib/data.ts`（server 端 import）→ 页面 Server Component。
+
+列表首屏只下发**轻量索引**（`ToolIndex`：id/name/topics/featured/date，见 `lib/types.ts`）与当前页完整工具；
+客户端排序/筛选在索引上完成，缺失的完整字段按页请求：
+
+- `GET /api/tools?ids=a,b,c` — 当前页完整工具（最多 100 个 id）
+- `GET /api/search?q=&sort=&page=&pageSize=` — 服务端 Fuse 搜索，分页返回
+- `GET /api/suggest?q=` — 顶栏建议，只返回前 6 条
+
+`lib/catalog.ts` 是这些 API 的 server-only 数据层（缓存搜索/建议索引）。client 组件不直接 import
+数据文件，也不接收全量工具数组；这样首访不再把 6000+ 条完整工具塞进 RSC payload。
 
 ## 数据源（骨架对齐 studio 导出）
 

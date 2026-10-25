@@ -1,10 +1,11 @@
 import { type Metadata } from "next"
 import { notFound } from "next/navigation"
 import { getAllTopics, getTopicById, getToolsByTopic } from "@/lib/data"
-import { latestToolDate } from "@/lib/tool"
+import { compareIndexRecommended, latestToolDate, TOOL_PAGE_SIZE, toToolIndex } from "@/lib/tool"
 import { topicIconNode } from "@/lib/topic-icon-node"
 import { formatCount, formatDate } from "@/lib/format"
 import { getBaseUrl } from "@/lib/utils"
+import type { Tool } from "@/lib/types"
 import { ToolBrowser } from "@/components/tool/tool-browser"
 
 type Props = {
@@ -46,6 +47,13 @@ export default async function TopicPage({ params }: Props) {
 
   const tools = getToolsByTopic(id)
   const latestDate = latestToolDate(tools)
+  const index = tools.map(toToolIndex)
+  const toolById = new Map(tools.map((tool) => [tool.id, tool]))
+  const initialTools = [...index]
+    .sort(compareIndexRecommended)
+    .slice(0, TOOL_PAGE_SIZE)
+    .map((tool) => toolById.get(tool.id))
+    .filter((tool): tool is Tool => Boolean(tool))
 
   const baseUrl = getBaseUrl()
   const breadcrumbLd = {
@@ -76,7 +84,9 @@ export default async function TopicPage({ params }: Props) {
       {tools.length > 0 && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: ld(itemListLd) }} />}
 
       <ToolBrowser
-        tools={tools}
+        index={index}
+        initialTools={initialTools}
+        pageSize={TOOL_PAGE_SIZE}
         topics={getAllTopics()}
         defaultView="grid"
         showTabs={false}

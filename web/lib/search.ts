@@ -38,9 +38,9 @@ export function buildSearchDocs(
 /**
  * 顶栏建议（搜索建议下拉）用的精简文档。
  *
- *刻意不带 `description`：它占了工具数据的四成体积，而下拉只展示「名称 + 主题 + 域名」。
- * 实测 85 条 `SuggestionDoc` ≈ 12KB raw / **3.2KB gzip**（带 description 的全量 SearchDoc 是 6.6KB gzip），
- * 由根布局一次性下发，因此顶栏建议**零网络往返**——这正是旧版「每次换词都要跑一趟服务器」的反面。
+ * 刻意不带 `description`：它占了工具数据的四成体积，而下拉只展示「名称 + 主题 + 域名」。
+ * 建议索引只在服务端构建（`lib/catalog.ts`），客户端按查询走 `/api/suggest`，
+ * 不再随根布局一次性下发 6000+ 条索引。
  */
 export interface SuggestionDoc {
   id: string

@@ -1,7 +1,21 @@
-import type { Tool } from "./types"
+import type { Tool, ToolIndex } from "./types"
+
+/** 列表首屏与「加载更多」的每页条数。 */
+export const TOOL_PAGE_SIZE = 60
 
 export function getToolDate(tool: Tool): string {
   return tool.publishedAt ?? tool.createdAt ?? ""
+}
+
+/** 完整工具 → 列表索引（只保留排序/筛选需要的字段）。 */
+export function toToolIndex(tool: Tool): ToolIndex {
+  return {
+    id: tool.id,
+    name: tool.name,
+    topics: tool.topics,
+    featured: tool.featured,
+    date: getToolDate(tool),
+  }
 }
 
 /**
@@ -44,6 +58,23 @@ export function compareRecommended(a: Tool, b: Tool): number {
   const dateCmp = compareDateDesc(getToolDate(a), getToolDate(b))
   if (dateCmp !== 0) return dateCmp
   return compareName(a, b)
+}
+
+export function compareIndexName(a: ToolIndex, b: ToolIndex): number {
+  return nameCollator.compare(a.name, b.name)
+}
+
+export function compareIndexDateDesc(a: ToolIndex, b: ToolIndex): number {
+  return compareDateDesc(a.date ?? "", b.date ?? "")
+}
+
+export function compareIndexRecommended(a: ToolIndex, b: ToolIndex): number {
+  const fa = a.featured ? 1 : 0
+  const fb = b.featured ? 1 : 0
+  if (fa !== fb) return fb - fa
+  const dateCmp = compareIndexDateDesc(a, b)
+  if (dateCmp !== 0) return dateCmp
+  return compareIndexName(a, b)
 }
 
 /** 一组工具中最新的日期（原始串）；无日期返回 null。按日期部分比较，容忍格式差异。 */
