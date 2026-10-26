@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next"
-import "@fontsource-variable/outfit"
+import localFont from "next/font/local"
 import { getAllTopics, getTopicCounts, getStats } from "@/lib/data"
 import { getBaseUrl } from "@/lib/utils"
 import { pageShell } from "@/lib/layout"
@@ -14,9 +14,21 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import Footer from "@/components/layout/footer"
 import "./globals.css"
 
+const outfit = localFont({
+  src: "./fonts/outfit-latin.woff2",
+  weight: "100 900",
+  style: "normal",
+  display: "swap",
+  variable: "--font-outfit",
+  preload: true,
+  fallback: ["system-ui", "sans-serif"],
+})
+
 const allTopics = getAllTopics()
 const topicCounts = getTopicCounts()
 const totalTools = getStats().tools
+// 0 工具的主题（如「未分类」）不进导航：点进去只会得到空页
+const navTopics = allTopics.filter((topic) => (topicCounts[topic.id] ?? 0) > 0)
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -93,7 +105,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="zh-CN" className="h-full antialiased" suppressHydrationWarning>
+    <html lang="zh-CN" className={`${outfit.variable} h-full antialiased`} suppressHydrationWarning>
       <head>
         <meta name="theme-color" content={BRAND_PAGE.light} />
         {/* 必须最先执行：同步内联脚本，早于首绘应用主题 / 侧栏 / 工具偏好的首帧状态 */}
@@ -110,18 +122,22 @@ export default function RootLayout({
             跳到主要内容
           </a>
           {/* 首帧偏好由 <head> 内联 prefsScript 在首绘前写入 <html>，此处不再使用 next/script */}
-          <Header className="md:hidden" />
-          <SubNav className="md:hidden" topics={allTopics} />
+          <Header className="md:hidden" topics={navTopics} topicCounts={topicCounts} totalTools={totalTools} />
+          <SubNav className="md:hidden" topics={navTopics} />
           {/* DSH 双表面骨架：左栏灰（sidebar）/ 右区白（main） */}
           <div className="flex flex-1 md:overflow-hidden">
-            <Sidebar topics={allTopics} topicCounts={topicCounts} totalTools={totalTools} />
+            <Sidebar topics={navTopics} topicCounts={topicCounts} totalTools={totalTools} />
             <div className="flex min-w-0 flex-1 flex-col bg-background md:overflow-hidden">
               <MainHeader className="hidden md:block" topics={allTopics} />
               <div
                 id="scroll-container"
                 className="flex flex-1 scroll-smooth flex-col scroll-pt-28 md:min-h-0 md:overflow-y-auto"
               >
-                <main id="main" className={pageShell("browse", "scroll-mt-16 px-4 py-6 sm:px-6 flex-1")}>
+                <main
+                  id="main"
+                  tabIndex={-1}
+                  className={pageShell("browse", "scroll-mt-16 px-4 py-6 sm:px-6 flex-1 outline-none")}
+                >
                   {children}
                 </main>
                 <Footer />

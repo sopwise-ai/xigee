@@ -49,11 +49,11 @@ export function InfoNav({ className }: { className?: string }) {
             href={href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "group relative flex shrink-0 items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "group relative flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm sm:gap-2 sm:px-3 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring",
               active ? "bg-brand/10 font-medium text-brand" : "text-muted-foreground hover:bg-brand/5 hover:text-brand",
             )}
           >
-            <Icon className="size-4 shrink-0" aria-hidden />
+            <Icon className="hidden size-4 shrink-0 sm:block" aria-hidden />
             <span className="whitespace-nowrap">{label}</span>
             {active && <span className="sr-only">（当前页）</span>}
           </Link>

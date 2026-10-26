@@ -24,10 +24,20 @@ import { readSearchState, SEARCH_SORT_OPTIONS, type SearchSort } from "@/lib/sea
 import { writeSearchParams } from "@/lib/url"
 import type { Topic, Tool } from "@/lib/types"
 
+/** 首屏由服务端算好带下来；缺省时退回原来的「hydration 后请求」路径（测试/兼容）。 */
+export interface SearchInitial {
+  query: string
+  sort: SearchSort
+  items: SearchDoc[]
+  total: number
+  related: SearchDoc[]
+}
+
 interface SearchResultsProps {
   featured: readonly Tool[]
   topics: readonly Topic[]
   topicCounts: Record<string, number>
+  initial?: SearchInitial
 }
 
 interface SearchResponse {
@@ -72,7 +82,7 @@ function shuffleWithSeed<T>(items: readonly T[], seed: number): T[] {
  * 搜索结果：请求由 `/api/search` 服务端完成，客户端不再下载全量工具、也不再本地建 Fuse 索引。
  * 空查询仍走着陆态；无结果时用服务端返回的「也许相关」+ 精选推荐兜底。
  */
-export function SearchResults({ featured, topics, topicCounts }: SearchResultsProps) {
+export function SearchResults({ featured, topics, topicCounts, initial }: SearchResultsProps) {
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const { query, sort } = readSearchState(searchParams)
@@ -80,13 +90,20 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
 
   const [retryToken, setRetryToken] = useState(0)
   const requestKey = `${trimmedQuery}|${sort}|${retryToken}`
+  const initialKey = initial ? `${initial.query}|${initial.sort}|0` : ""
+  /** 首屏已由 server 直出：跳过同参数的第一次客户端请求，换词/重试仍走 API。 */
+  const skipInitialFetch = useRef(Boolean(initial))
   const [result, setResult] = useState<{
     key: string
     query: string
     items: SearchDoc[]
     total: number
     related: SearchDoc[]
-  }>({ key: "", query: "", items: [], total: 0, related: [] })
+  }>(() =>
+    initial
+      ? { key: initialKey, query: initial.query, items: initial.items, total: initial.total, related: initial.related }
+      : { key: "", query: "", items: [], total: 0, related: [] },
+  )
   const [errorKey, setErrorKey] = useState("")
   const [loadingMoreState, setLoadingMoreState] = useState<{ key: string; value: boolean }>({
     key: "",
@@ -111,6 +128,10 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
 
   useEffect(() => {
     if (!trimmedQuery) return
+    if (skipInitialFetch.current && requestKey === initialKey) {
+      skipInitialFetch.current = false
+      return
+    }
     loadMoreControllerRef.current?.abort()
 
     const requestId = ++requestIdRef.current
@@ -140,7 +161,7 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
       })
 
     return () => controller.abort()
-  }, [requestKey, trimmedQuery, sort])
+  }, [initialKey, requestKey, trimmedQuery, sort])
 
   useEffect(() => () => loadMoreControllerRef.current?.abort(), [])
 

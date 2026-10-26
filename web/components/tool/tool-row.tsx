@@ -48,7 +48,7 @@ export function ToolRow({
               {topicLabel}
             </span>
           )}
-          <span className="hidden shrink-0 font-data text-muted-foreground/70 md:inline">{domain}</span>
+          <span className="hidden shrink-0 font-data text-muted-foreground md:inline">{domain}</span>
         </div>
         <p className="truncate text-sm text-muted-foreground" title={tool.description}>
           {tool.description}
@@ -71,7 +71,11 @@ export function ToolRow({
           </div>
         )}
         {tool.pricing && <PricingBadge pricing={tool.pricing} />}
-        <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground/60 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-foreground" />
+        <ArrowUpRight
+          className="size-3.5 shrink-0 text-muted-foreground/60 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-foreground"
+          aria-hidden
+        />
+        <span className="sr-only">（在新标签页打开官网）</span>
       </div>
     </a>
   )

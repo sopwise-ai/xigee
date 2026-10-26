@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { Search, Settings } from "lucide-react"
+import { Search, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { pageShell } from "@/lib/layout"
@@ -12,6 +12,8 @@ import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { MAX_SEARCH_QUERY_LENGTH } from "@/lib/search-limits"
 import { searchPageHref, writeSearchQuery } from "@/lib/url"
 import ThemeToggle from "./theme-toggle"
+import { MobileMenu } from "./mobile-menu"
+import type { Topic } from "@/lib/types"
 import { Wordmark } from "@/components/brand/wordmark"
 
 /** 与主区顶栏 SearchField 同一个防抖时长，两端「边打边搜」手感一致。 */
@@ -30,7 +32,7 @@ function initialQuery(): string {
  * 在搜索页内边打边搜（`replaceState`，零网络往返）；其余页面回车才跳转。
  * 外层 `<form action="/search">` 保证 hydration 完成前回车仍走原生 GET 提交。
  */
-function MobileSearchInput({ onClose }: { onClose: () => void }) {
+function MobileSearchInput({ onClose, onCancel }: { onClose: () => void; onCancel: () => void }) {
   const [value, setValue] = useState(initialQuery)
   const router = useRouter()
   const pathname = usePathname()
@@ -48,6 +50,7 @@ function MobileSearchInput({ onClose }: { onClose: () => void }) {
       return
     }
     router.push(searchPageHref(trimmed))
+    onClose()
   }
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -59,7 +62,7 @@ function MobileSearchInput({ onClose }: { onClose: () => void }) {
     // Enter 交给 <form onSubmit>：键盘提交与原生 GET 提交同一条路径，不重复触发
     if (e.key === "Escape") {
       if (value) setValue("")
-      else onClose()
+      else onCancel()
     }
   }
 
@@ -83,18 +86,44 @@ function MobileSearchInput({ onClose }: { onClose: () => void }) {
           onKeyDown={handleKeyDown}
           onBlur={onClose}
         />
+        <InputGroupAddon align="inline-end">
+          <InputGroupButton
+            type="button"
+            size="icon-xs"
+            aria-label="关闭搜索"
+            title="关闭"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={onCancel}
+          >
+            <X />
+          </InputGroupButton>
+        </InputGroupAddon>
       </InputGroup>
     </form>
   )
 }
 
-function HeaderInner({ className }: { className?: string }) {
+interface HeaderProps {
+  className?: string
+  topics?: readonly Topic[]
+  topicCounts?: Record<string, number>
+  totalTools?: number
+}
+
+function HeaderInner({ className, topics = [], topicCounts = {}, totalTools = 0 }: HeaderProps) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchResetKey, setSearchResetKey] = useState(0)
+  const searchButtonRef = useRef<HTMLButtonElement>(null)
 
   const handleSearchClose = () => {
     setSearchOpen(false)
     setSearchResetKey((k) => k + 1)
+  }
+
+  /** 显式取消（X / Esc）：关闭并把焦点还给触发按钮；失焦关闭不抢焦点。 */
+  const handleSearchCancel = () => {
+    handleSearchClose()
+    searchButtonRef.current?.focus()
   }
 
   // 移动端「/」聚焦搜索：仅在本 header 实际可见（<768px）时接管，
@@ -132,12 +161,13 @@ function HeaderInner({ className }: { className?: string }) {
         <div className="flex flex-1 items-center justify-end gap-2">
           {searchOpen ? (
             <div id="mobile-search" className="w-full">
-              <MobileSearchInput key={searchResetKey} onClose={handleSearchClose} />
+              <MobileSearchInput key={searchResetKey} onClose={handleSearchClose} onCancel={handleSearchCancel} />
             </div>
           ) : (
             // 点开的是内联搜索框（不是对话框），所以不声明 aria-haspopup；
             // 触发按钮展开后即卸载，也就没有可挂 aria-expanded 的常驻元素
             <Button
+              ref={searchButtonRef}
               variant="outline"
               size="icon"
               aria-label="搜索工具"
@@ -148,9 +178,7 @@ function HeaderInner({ className }: { className?: string }) {
             </Button>
           )}
 
-          <Button variant="outline" size="icon" aria-label="设置" title="设置" render={<Link href="/settings" />}>
-            <Settings />
-          </Button>
+          <MobileMenu topics={topics} topicCounts={topicCounts} totalTools={totalTools} />
 
           <ThemeToggle />
         </div>
@@ -159,6 +187,6 @@ function HeaderInner({ className }: { className?: string }) {
   )
 }
 
-export default function Header({ className }: { className?: string }) {
-  return <HeaderInner className={className} />
+export default function Header(props: HeaderProps) {
+  return <HeaderInner {...props} />
 }

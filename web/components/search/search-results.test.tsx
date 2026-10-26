@@ -23,7 +23,15 @@ function mockSearch() {
     const url = new URL(String(input), "http://localhost")
     const q = url.searchParams.get("q") ?? ""
     if (q === "对话") {
-      return json({ items: [mockTools[0], mockTools[1]], total: 2, hasMore: false, related: [] })
+      return json({
+        items: [
+          { ...mockTools[0], topicNames: [] },
+          { ...mockTools[1], topicNames: [] },
+        ],
+        total: 2,
+        hasMore: false,
+        related: [],
+      })
     }
     if (q === "代码") {
       return json({ items: [mockTools[4]], total: 1, hasMore: false, related: [] })
@@ -64,6 +72,32 @@ describe("SearchResults", () => {
     renderResults()
     expect(screen.getByText("最近搜索")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "图像生成" })).toBeInTheDocument()
+  })
+
+  it("带服务端首屏结果时直接渲染，不再发起 /api/search 请求", () => {
+    nav.search = "?q=对话"
+    const fetchMock = mockSearch()
+    render(
+      <SearchResults
+        featured={featured}
+        topics={mockTopics}
+        topicCounts={mockTopicCounts}
+        initial={{
+          query: "对话",
+          sort: "relevance",
+          items: [
+            { ...mockTools[0], topicNames: [] },
+            { ...mockTools[1], topicNames: [] },
+          ],
+          total: 2,
+          related: [],
+        }}
+      />,
+    )
+
+    expect(screen.getByRole("status")).toHaveTextContent("找到 2 个与「对话」相关的结果")
+    expect(document.querySelectorAll("[data-search-result]")).toHaveLength(2)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it("有结果时给出结果计数、排序入口与结果行", async () => {

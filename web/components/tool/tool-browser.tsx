@@ -341,7 +341,12 @@ export function ToolBrowser({
         ) : (
           <>
             {showTabs ? (
-              <div role="tabpanel" id={panelId} aria-label="工具列表">
+              <div
+                role="tabpanel"
+                id={panelId}
+                aria-labelledby={panelId ? `${panelId}-tab-${tab}` : undefined}
+                aria-label={panelId ? undefined : "工具列表"}
+              >
                 {renderBrowserContent()}
               </div>
             ) : (

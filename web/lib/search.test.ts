@@ -193,8 +193,8 @@ describe("buildSuggestionDocs", () => {
     expect(docs[0].topicNames).toEqual(["对话助手"])
   })
 
-  it("不含 description：建议只展示名称/主题/域名，描述占了工具数据四成体积", () => {
-    expect(Object.keys(docs[0])).not.toContain("description")
+  it("带 description 只用于检索兜底：中文短词常只出现在描述里", () => {
+    expect(docs[0].description).toBe("AI 对话助手")
   })
 
   it("展开主题名并过滤未知主题 id", () => {
