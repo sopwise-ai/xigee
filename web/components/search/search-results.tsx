@@ -111,6 +111,7 @@ export function SearchResults({ featured, topics, topicCounts, initial }: Search
   })
   const requestIdRef = useRef(0)
   const loadMoreControllerRef = useRef<AbortController | null>(null)
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null)
 
   const topicNames = useMemo(
     () => Object.fromEntries(topics.map((c) => [c.id, c.name])) as Record<string, string>,
@@ -201,6 +202,21 @@ export function SearchResults({ featured, topics, topicCounts, initial }: Search
         )
       })
   }, [items.length, loadingMore, requestKey, sort, total, trimmedQuery])
+
+  // 搜索列表同样走滚动加载：哨兵进入视口前 500px 就取下一页，不要求用户点按钮。
+  useEffect(() => {
+    if (loading || loadingMore || items.length >= total) return
+    const node = loadMoreSentinelRef.current
+    if (!node || typeof IntersectionObserver === "undefined") return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMore()
+      },
+      { rootMargin: "500px 0px" },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [items.length, loading, loadingMore, loadMore, total])
 
   // 不同搜索词 → 不同推荐；同 URL 稳定。种子两端一致，故无重排闪烁。
   const displayedFeatured = useMemo(() => shuffleWithSeed(featured, hashString(trimmedQuery)), [featured, trimmedQuery])
@@ -349,13 +365,24 @@ export function SearchResults({ featured, topics, topicCounts, initial }: Search
       </div>
 
       {!loading && items.length < total && (
-        <div className="flex flex-col items-center gap-2 pt-1">
-          <p className="font-data text-xs text-muted-foreground">
-            已显示 {items.length} / {formatCount(total)}
-          </p>
-          <Button variant="outline" disabled={loadingMore} onClick={loadMore}>
-            {loadingMore ? "加载中…" : `加载更多（剩余 ${formatCount(total - items.length)}）`}
-          </Button>
+        <div
+          ref={loadMoreSentinelRef}
+          aria-live="polite"
+          className="flex flex-col items-center gap-2 border-t border-border pt-3 font-data text-xs text-muted-foreground"
+        >
+          {loadingMore ? (
+            <>
+              <span
+                className="size-4 animate-spin rounded-full border-2 border-border border-t-foreground/70"
+                aria-hidden
+              />
+              <span>加载中…</span>
+            </>
+          ) : (
+            <span>
+              已显示 {formatCount(items.length)} / {formatCount(total)}，继续向下滚动
+            </span>
+          )}
         </div>
       )}
 
