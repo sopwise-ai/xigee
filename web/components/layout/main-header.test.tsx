@@ -140,6 +140,21 @@ describe("MainHeader 搜索", () => {
     expect(window.location.search).toBe("")
   })
 
+  it("回车提交后立即收起建议浮层（回归：进 /search 后浮层仍遮挡排序与结果）", async () => {
+    renderHeader()
+
+    const input = typeInto("chat")
+    expect(await screen.findByRole("listbox", { name: "搜索建议" })).toBeInTheDocument()
+    expect(input).toHaveAttribute("aria-expanded", "true")
+
+    fireEvent.submit(screen.getByRole("search"))
+
+    expect(screen.queryByRole("listbox")).toBeNull()
+    expect(input).toHaveAttribute("aria-expanded", "false")
+    // 收起浮层不等于丢输入：跳转 URL 仍然带着 q
+    expect(nav.push).toHaveBeenCalledWith("/search?q=chat")
+  })
+
   it("其它页输入后按查询请求建议，↑↓ 即可选中", async () => {
     renderHeader()
 

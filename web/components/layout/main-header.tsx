@@ -173,6 +173,10 @@ function SearchField() {
   /** 提交搜索：搜索页原地定格 URL（不等防抖、不发请求），其它页才做一次客户端跳转。 */
   const submitSearch = () => {
     const trimmed = inputRef.current?.value.trim() ?? ""
+    // 提交即收起建议。客户端跳转不会重挂主区顶栏，若只依赖 blur/pointerdown 收起，
+    // 从首页回车进 /search 后浮层会继续盖住排序控件与结果（回归见下方单测）。
+    setFocused(false)
+    setDismissed(true)
     if (isSearchPage) {
       writeSearchQuery(trimmed, pathname, window.location.search)
       return
