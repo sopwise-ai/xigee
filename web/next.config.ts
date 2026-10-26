@@ -26,6 +26,9 @@ const nextConfig: NextConfig = {
       "style-src 'self' 'unsafe-inline'",
       `script-src ${scriptSrc}`,
       "connect-src 'self'",
+      "worker-src 'self'",
+      "manifest-src 'self'",
+      "object-src 'none'",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
@@ -50,6 +53,10 @@ const nextConfig: NextConfig = {
       {
         source: "/apple-icon",
         headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
+      {
+        source: "/sw.js",
+        headers: [{ key: "Cache-Control", value: "public, max-age=0, must-revalidate" }],
       },
       {
         source: "/manifest.webmanifest",

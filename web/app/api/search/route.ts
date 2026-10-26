@@ -1,3 +1,5 @@
+export const preferredRegion = "sin1"
+
 import { NextResponse } from "next/server"
 import { searchTools } from "@/lib/catalog"
 import { SEARCH_PRICING_OPTIONS } from "@/lib/search-params"

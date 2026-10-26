@@ -10,6 +10,7 @@ import { SubNav } from "@/components/layout/sub-nav"
 import { Sidebar } from "@/components/layout/sidebar"
 import { MainHeader } from "@/components/layout/main-header"
 import { HistoryTracker } from "@/components/runtime/history-tracker"
+import { PwaRegister } from "@/components/runtime/pwa-register"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import Footer from "@/components/layout/footer"
 import "./globals.css"
@@ -57,6 +58,11 @@ export const metadata: Metadata = {
   title: { default: "XiGee — 精选 AI 工具目录", template: "%s — XiGee" },
   description: "XiGee 精选值得用的 AI 工具，人工筛选、主题清晰，点击直达官方网站。",
   keywords: ["AI", "AI工具", "人工智能", "AI导航", "AI目录", "AI工具目录", "XiGee"],
+  appleWebApp: {
+    capable: true,
+    title: "XiGee",
+    statusBarStyle: "default",
+  },
   openGraph: {
     title: "XiGee — 精选 AI 工具目录",
     description: "精选值得用的 AI 工具，每一款都经过人工筛选，点击直达官方网站。",
@@ -114,6 +120,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col pb-[env(safe-area-inset-bottom)] md:h-[100dvh] md:overflow-hidden">
         <HistoryTracker />
+        <PwaRegister />
         <TooltipProvider>
           <a
             href="#main"

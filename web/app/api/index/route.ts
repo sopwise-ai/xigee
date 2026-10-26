@@ -1,3 +1,5 @@
+export const preferredRegion = "sin1"
+
 import { NextResponse } from "next/server"
 import { getAllTools, getToolsByTopic } from "@/lib/data"
 import { encodeToolIndex, toToolIndex } from "@/lib/tool"

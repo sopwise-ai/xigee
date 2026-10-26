@@ -16,6 +16,7 @@ export function toToolIndex(tool: Tool): ToolIndex {
   return {
     id: tool.id,
     name: tool.name,
+    url: tool.url,
     featured: tool.featured,
     date: getToolDate(tool),
   }
@@ -109,6 +110,8 @@ export function sortToolIndex(index: readonly ToolIndex[], sort: SortMode): Tool
 export interface ToolIndexPayload {
   ids: string[]
   names: string[]
+  /** 仅离线搜索兜底需要：名称命中后要能打开工具官网。 */
+  urls: string[]
   featured: number[]
 }
 
@@ -120,6 +123,7 @@ export function encodeToolIndex(index: readonly ToolIndex[]): ToolIndexPayload {
   return {
     ids: index.map((tool) => tool.id),
     names: index.map((tool) => tool.name),
+    urls: index.map((tool) => tool.url ?? ""),
     featured,
   }
 }
@@ -131,6 +135,7 @@ export function decodeToolIndex(payload: ToolIndexPayload | readonly ToolIndex[]
   return data.ids.map((id, i) => ({
     id,
     name: data.names[i] ?? "",
+    url: data.urls?.[i] ?? undefined,
     featured: featured.has(i) || undefined,
   }))
 }

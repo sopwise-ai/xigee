@@ -12,6 +12,7 @@ import { SearchNoResults } from "@/components/search/search-no-results"
 import { SearchResultRow } from "@/components/search/search-result-row"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { formatCount } from "@/lib/format"
+import { searchOffline } from "@/lib/offline-search"
 import {
   addRecentSearch,
   clearRecentSearches,
@@ -118,6 +119,7 @@ export function SearchResults({ featured, topics, topicCounts, initial }: Search
       : { key: "", query: "", items: [], total: 0, related: [] },
   )
   const [errorKey, setErrorKey] = useState("")
+  const [offlineMode, setOfflineMode] = useState(false)
   const [loadingMoreState, setLoadingMoreState] = useState<{ key: string; value: boolean }>({
     key: "",
     value: false,
@@ -151,6 +153,7 @@ export function SearchResults({ featured, topics, topicCounts, initial }: Search
     const requestId = ++requestIdRef.current
     const controller = new AbortController()
     const key = requestKey
+    setOfflineMode(false)
     const params = new URLSearchParams({
       q: trimmedQuery,
       sort,
@@ -168,11 +171,24 @@ export function SearchResults({ featured, topics, topicCounts, initial }: Search
       })
       .then((data) => {
         if (requestId !== requestIdRef.current) return
+        setOfflineMode(false)
         setResult({ key, query: trimmedQuery, items: data.items, total: data.total, related: data.related })
       })
-      .catch((reason: unknown) => {
+      .catch(async (reason: unknown) => {
         if (controller.signal.aborted) return
         if (requestId !== requestIdRef.current) return
+        // 断网/接口不可用时退回本地名称搜索：索引由 SW 缓存，至少还能找到看过的工具。
+        try {
+          const local = await searchOffline(trimmedQuery)
+          if (requestId !== requestIdRef.current) return
+          if (local.total > 0) {
+            setOfflineMode(true)
+            setResult({ key, query: trimmedQuery, items: local.items, total: local.total, related: [] })
+            return
+          }
+        } catch {
+          /* 本地索引也没缓存：继续走错误态 */
+        }
         setErrorKey(key)
         console.error("[search] 请求失败", reason)
       })
@@ -357,6 +373,11 @@ export function SearchResults({ featured, topics, topicCounts, initial }: Search
 
   return (
     <div className="flex flex-col gap-3" aria-busy={loading}>
+      {offlineMode && (
+        <p role="status" className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+          离线模式：仅按名称匹配缓存索引。
+        </p>
+      )}
       <div className="flex items-center justify-between gap-3">
         {/* 中文句子里的元素切分不要留空格：`{" "}` 或行内尾随空格会渲染成「个与 「对话」 相关」 */}
         <p role="status" aria-live="polite" className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
