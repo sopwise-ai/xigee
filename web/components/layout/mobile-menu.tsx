@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { FileText, History, Info, LayoutGrid, Menu, Settings, Shield, X } from "lucide-react"
+import { History, LayoutGrid, Menu, Settings, X } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatCount } from "@/lib/format"
 import { useHistoryCount } from "@/components/history/history-count"
@@ -14,13 +15,6 @@ interface MobileMenuProps {
   topicCounts: Record<string, number>
   totalTools: number
 }
-
-const INFO_LINKS = [
-  { href: "/settings", label: "设置", icon: Settings },
-  { href: "/about", label: "关于 XiGee", icon: Info },
-  { href: "/privacy", label: "隐私政策", icon: Shield },
-  { href: "/terms", label: "服务条款", icon: FileText },
-] as const
 
 /**
  * 移动端主导航抽屉。
@@ -67,18 +61,18 @@ export function MobileMenu({ topics, topicCounts, totalTools }: MobileMenuProps)
 
   return (
     <>
-      <button
+      <Button
         ref={triggerRef}
-        type="button"
+        variant="outline"
+        size="icon"
         aria-label="打开菜单"
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls="mobile-menu"
         onClick={() => setOpen(true)}
-        className="inline-flex size-9 items-center justify-center rounded-md border border-input bg-background text-foreground transition-colors outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <Menu className="size-4" aria-hidden />
-      </button>
+        <Menu aria-hidden />
+      </Button>
 
       <dialog
         ref={dialogRef}
@@ -95,18 +89,12 @@ export function MobileMenu({ topics, topicCounts, totalTools }: MobileMenuProps)
           <div className="ml-auto flex h-[100dvh] w-[86%] max-w-sm flex-col border-l bg-background shadow-2xl">
             <div className="flex h-14 shrink-0 items-center justify-between border-b px-4">
               <span className="text-sm font-semibold tracking-tight">导航</span>
-              <button
-                ref={closeRef}
-                type="button"
-                aria-label="关闭菜单"
-                onClick={close}
-                className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <X className="size-4" aria-hidden />
-              </button>
+              <Button ref={closeRef} variant="ghost" size="icon" aria-label="关闭菜单" onClick={close}>
+                <X aria-hidden />
+              </Button>
             </div>
 
-            <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-3">
+            <div className="shrink-0 px-3 pt-3">
               <nav aria-label="快捷入口" className="flex flex-col gap-0.5">
                 <MenuLink
                   href="/"
@@ -122,47 +110,41 @@ export function MobileMenu({ topics, topicCounts, totalTools }: MobileMenuProps)
                   count={formatCount(historyCount)}
                   active={pathname === "/history"}
                 />
+                <MenuLink href="/settings" icon={Settings} label="设置" active={pathname === "/settings"} />
               </nav>
+            </div>
 
-              <div className="mt-4 flex items-baseline justify-between px-2">
+            <div className="mt-3 flex min-h-0 flex-1 flex-col border-t">
+              <div className="flex shrink-0 items-baseline justify-between px-5 pb-1 pt-3">
                 <p className="font-data text-[0.6875rem] uppercase tracking-[0.18em] text-muted-foreground">主题</p>
                 <span className="font-data text-[0.6875rem] text-muted-foreground">{topics.length}</span>
               </div>
-              <nav aria-label="全部主题" className="mt-1 grid grid-cols-2 gap-0.5">
-                {topics.map((topic) => {
-                  const active = pathname === `/topic/${topic.id}`
-                  return (
-                    <Link
-                      key={topic.id}
-                      href={`/topic/${topic.id}`}
-                      prefetch={false}
-                      aria-current={active ? "page" : undefined}
-                      className={cn(
-                        "flex min-w-0 items-center justify-between gap-1 rounded-md px-2 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        active
-                          ? "bg-brand/10 font-medium text-brand"
-                          : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                      )}
-                    >
-                      <span className="truncate">{topic.name}</span>
-                      <span className="shrink-0 font-data text-[0.6875rem] text-muted-foreground">
-                        {formatCount(topicCounts[topic.id] ?? 0)}
-                      </span>
-                    </Link>
-                  )
-                })}
+              <nav aria-label="全部主题" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4">
+                <div className="flex flex-col gap-0.5">
+                  {topics.map((topic) => {
+                    const active = pathname === `/topic/${topic.id}`
+                    return (
+                      <Link
+                        key={topic.id}
+                        href={`/topic/${topic.id}`}
+                        prefetch={false}
+                        aria-current={active ? "page" : undefined}
+                        className={cn(
+                          "flex min-w-0 items-center justify-between gap-3 rounded-md px-2 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          active
+                            ? "bg-brand/10 font-medium text-brand"
+                            : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                        )}
+                      >
+                        <span className="truncate">{topic.name}</span>
+                        <span className="shrink-0 font-data text-[0.6875rem] text-muted-foreground">
+                          {formatCount(topicCounts[topic.id] ?? 0)}
+                        </span>
+                      </Link>
+                    )
+                  })}
+                </div>
               </nav>
-
-              <div className="mt-4 border-t pt-3">
-                <p className="px-2 font-data text-[0.6875rem] uppercase tracking-[0.18em] text-muted-foreground">
-                  更多
-                </p>
-                <nav aria-label="更多" className="mt-1 flex flex-col gap-0.5">
-                  {INFO_LINKS.map(({ href, label, icon: Icon }) => (
-                    <MenuLink key={href} href={href} icon={Icon} label={label} active={pathname === href} />
-                  ))}
-                </nav>
-              </div>
             </div>
           </div>
         )}
