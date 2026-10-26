@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next"
 import "@fontsource-variable/outfit"
-import { getAllTopics, getAllTools, getTopicCounts, getStats } from "@/lib/data"
-import { buildSuggestionDocs } from "@/lib/search"
+import { getAllTopics, getTopicCounts, getStats } from "@/lib/data"
 import { getBaseUrl } from "@/lib/utils"
 import { pageShell } from "@/lib/layout"
 import { BRAND_PAGE } from "@/lib/brand"
@@ -18,12 +17,6 @@ import "./globals.css"
 const allTopics = getAllTopics()
 const topicCounts = getTopicCounts()
 const totalTools = getStats().tools
-
-/**
- * 顶栏搜索建议数据（不含 description，见 `SuggestionDoc`）：随根布局一次性下发，
- * 顶栏出建议就不用再跑一趟服务器 —— 这是「边打边搜 + 建议下拉」零往返的前提。
- */
-const suggestions = buildSuggestionDocs(getAllTools(), Object.fromEntries(allTopics.map((c) => [c.id, c.name])))
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -123,7 +116,7 @@ export default function RootLayout({
           <div className="flex flex-1 md:overflow-hidden">
             <Sidebar topics={allTopics} topicCounts={topicCounts} totalTools={totalTools} />
             <div className="flex min-w-0 flex-1 flex-col bg-background md:overflow-hidden">
-              <MainHeader className="hidden md:block" topics={allTopics} suggestions={suggestions} />
+              <MainHeader className="hidden md:block" topics={allTopics} />
               <div
                 id="scroll-container"
                 className="flex flex-1 scroll-smooth flex-col scroll-pt-28 md:min-h-0 md:overflow-y-auto"

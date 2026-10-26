@@ -21,7 +21,7 @@ vi.mock("next/navigation", () => ({
 const DEBOUNCE_MS = 150
 
 function renderHeader() {
-  return render(<MainHeader topics={mockTopics} suggestions={mockSuggestionDocs} />)
+  return render(<MainHeader topics={mockTopics} />)
 }
 
 function typeInto(value: string) {
@@ -74,10 +74,18 @@ describe("MainHeader 搜索", () => {
     nav.pathname = "/"
     nav.search = ""
     window.history.replaceState(null, "", "/")
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockSuggestionDocs,
+      }),
+    )
   })
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.unstubAllGlobals()
     window.history.replaceState(null, "", "/")
   })
 
@@ -132,13 +140,11 @@ describe("MainHeader 搜索", () => {
     expect(window.location.search).toBe("")
   })
 
-  it("其它页输入即时出建议（不吃防抖），↑↓ 即可选中", () => {
-    vi.useFakeTimers()
+  it("其它页输入后按查询请求建议，↑↓ 即可选中", async () => {
     renderHeader()
 
     const input = typeInto("chat")
-    // 刻意不推进计时器：建议必须是即时的，不能等 150ms
-    const listbox = screen.getByRole("listbox", { name: "搜索建议" })
+    const listbox = await screen.findByRole("listbox", { name: "搜索建议" })
     expect(listbox).toBeInTheDocument()
     expect(input).toHaveAttribute("aria-expanded", "true")
 
@@ -155,11 +161,11 @@ describe("MainHeader 搜索", () => {
     expect(input).toHaveAttribute("aria-activedescendant", suggestionOptionId("search-suggestions", count - 1))
   })
 
-  it("选中建议后回车会真正打开该工具（回归：id 曾挂在 <li> 上导致点击落空）", () => {
-    vi.useFakeTimers()
+  it("选中建议后回车会真正打开该工具（回归：id 曾挂在 <li> 上导致点击落空）", async () => {
     renderHeader()
 
     const input = typeInto("chat")
+    await screen.findByRole("listbox", { name: "搜索建议" })
     fireEvent.keyDown(input, { key: "ArrowDown" })
 
     const activeId = input.getAttribute("aria-activedescendant")
@@ -184,12 +190,11 @@ describe("MainHeader 搜索", () => {
     expect(screen.queryByRole("listbox")).toBeNull()
   })
 
-  it("Esc 先收下拉并保留已输入内容，再按一次才清空", () => {
-    vi.useFakeTimers()
+  it("Esc 先收下拉并保留已输入内容，再按一次才清空", async () => {
     renderHeader()
 
     const input = typeInto("chat") as HTMLInputElement
-    expect(screen.getByRole("listbox")).toBeInTheDocument()
+    expect(await screen.findByRole("listbox")).toBeInTheDocument()
 
     fireEvent.keyDown(input, { key: "Escape" })
     expect(screen.queryByRole("listbox")).toBeNull()
