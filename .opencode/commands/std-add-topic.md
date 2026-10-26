@@ -21,6 +21,7 @@ description: 添加主题
    - 英文主题名: 转小写，空格转连字符 (如 "Code Tools" → "code-tools")
    - 中文主题名: 用拼音或英文翻译 (如 "对话助手" → "chat-assistant")
    - slug 只能含小写字母、数字、连字符
+   - **不加 `ai-` / `ai` 前缀**，直接用语义英文词（`image-generation` 而非 `ai-image-generation`）；slug 是对外主键与 URL 片段，创建后不再更改
 
 3. 查询现有主题，检查 name 和 slug 是否重复:
 
