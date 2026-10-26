@@ -123,10 +123,25 @@ describe("ToolBrowser 分页加载", () => {
 
     render(<ToolBrowser initialTools={first} pageSize={2} />)
     expect(screen.getAllByText(/Tool [a-e]/)).toHaveLength(2)
-    await waitFor(() => expect(screen.getByRole("navigation", { name: "列表分页" })).toHaveTextContent("第 1 / 3 页"))
+    await waitFor(() => expect(screen.getByText(/已显示 2 \/ 5/)).toBeInTheDocument())
   })
 
-  it("首屏只渲染 pageSize 条，翻页时按 id 补齐完整工具", async () => {
+  it("首屏只渲染 pageSize 条，滚动到哨兵时按 id 补齐下一批", async () => {
+    const callbacks: IntersectionObserverCallback[] = []
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          callbacks.push(callback)
+        }
+        observe() {}
+        disconnect() {}
+        unobserve() {}
+        takeRecords() {
+          return []
+        }
+      },
+    )
     const many = ["a", "b", "c", "d", "e"].map(makeTool)
     const first = many.slice(0, 2)
     const fetchMock = vi.fn().mockResolvedValue({
@@ -138,11 +153,17 @@ describe("ToolBrowser 分页加载", () => {
     render(<ToolBrowser index={many.map(toToolIndex)} initialTools={first} pageSize={2} />)
 
     expect(screen.getAllByText(/Tool [a-e]/)).toHaveLength(2)
-    fireEvent.click(screen.getByRole("button", { name: /下一页/ }))
+    await waitFor(() => expect(callbacks.length).toBeGreaterThan(0))
+    act(() =>
+      callbacks[callbacks.length - 1](
+        [{ isIntersecting: true }] as IntersectionObserverEntry[],
+        {} as IntersectionObserver,
+      ),
+    )
 
     await waitFor(() => expect(screen.getByText("Tool c")).toBeInTheDocument())
     expect(screen.getByText("Tool d")).toBeInTheDocument()
-    expect(screen.queryByText("Tool a")).toBeNull()
+    expect(screen.getByText("Tool a")).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/tools?ids=c%2Cd",
       expect.objectContaining({ signal: expect.anything() }),
