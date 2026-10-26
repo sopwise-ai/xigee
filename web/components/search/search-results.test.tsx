@@ -85,6 +85,9 @@ describe("SearchResults", () => {
         initial={{
           query: "对话",
           sort: "relevance",
+          topic: "",
+          pricing: "",
+          featured: false,
           items: [
             { ...mockTools[0], topicNames: [] },
             { ...mockTools[1], topicNames: [] },
@@ -115,8 +118,8 @@ describe("SearchResults", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("找到 2 个"))
 
     fireEvent.click(screen.getByRole("button", { name: "排序" }))
-    fireEvent.click(await screen.findByRole("menuitemradio", { name: /最新/ }))
-    expect(new URLSearchParams(window.location.search).get("sort")).toBe("latest")
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: /名称 A-Z/ }))
+    expect(new URLSearchParams(window.location.search).get("sort")).toBe("name")
   })
 
   it("未找到时走无结果页，并给出「也许你想找」/ 换词建议", async () => {

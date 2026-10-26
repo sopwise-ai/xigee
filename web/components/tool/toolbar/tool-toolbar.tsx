@@ -38,15 +38,12 @@ export function ToolToolbar({
   panelId,
   title,
 }: ToolToolbarProps) {
-  const isLatestTab = tab === "latest"
-
   return (
     <PageBar
       width="browse"
       actions={
         <>
-          {/* 「最新」tab 已隐含按时间排序，隐藏排序控件避免语义重复 */}
-          {!isLatestTab && <SortMenu sort={sort} onSortChange={onSortChange} />}
+          <SortMenu sort={sort} onSortChange={onSortChange} />
           <ViewToggle view={view} onViewChange={onViewChange} />
         </>
       }

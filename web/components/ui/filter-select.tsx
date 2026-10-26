@@ -50,7 +50,7 @@ export function FilterSelect({ label, icon: Icon, value, options, onChange, acti
         <span className="whitespace-nowrap">{selected?.label ?? label}</span>
         <ChevronDown data-icon="inline-end" className="opacity-60" aria-hidden />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-[9rem]">
+      <DropdownMenuContent align="start" className="max-h-80 min-w-[9rem] overflow-y-auto">
         <DropdownMenuRadioGroup value={value} onValueChange={(next) => onChange(String(next))}>
           {options.map((option) => (
             <DropdownMenuRadioItem key={option.value} value={option.value} className="pr-8 pl-2 text-xs">

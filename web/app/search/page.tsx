@@ -5,8 +5,9 @@ import { pageShell } from "@/lib/layout"
 import { SearchResults, type SearchInitial } from "@/components/search/search-results"
 import { SearchPageInput } from "@/components/search/search-page-input"
 import { MAX_SEARCH_QUERY_LENGTH } from "@/lib/search-limits"
-import { isSearchSort, type SearchSort } from "@/lib/search-params"
+import { isSearchSort, readSearchFacets, type SearchSort } from "@/lib/search-params"
 import { searchTools } from "@/lib/catalog"
+import type { Pricing } from "@/lib/types"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export const metadata: Metadata = {
@@ -47,7 +48,13 @@ function ResultsSkeleton() {
 }
 
 interface SearchPageProps {
-  searchParams: Promise<{ q?: string | string[]; sort?: string | string[] }>
+  searchParams: Promise<{
+    q?: string | string[]
+    sort?: string | string[]
+    topic?: string | string[]
+    pricing?: string | string[]
+    featured?: string | string[]
+  }>
 }
 
 /** 读取并裁剪查询串；URL 可能被手工改写，长度上限与 API 保持一致。 */
@@ -65,6 +72,11 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const params = await searchParams
   const query = readQuery(params.q)
   const sort = readSort(params.sort)
+  const getParam = (key: "topic" | "pricing" | "featured"): string | null => {
+    const value = params[key]
+    return (Array.isArray(value) ? value[0] : value) ?? null
+  }
+  const facets = readSearchFacets({ get: getParam })
 
   // 首屏直接算：省掉「HTML → JS → hydrate → /api/search」整条瀑布，结果随 SSR 一起到达。
   // api 仍保留给「加载更多 / 换排序」，纯客户端导航时复用同一份 catalog。
@@ -72,7 +84,18 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     ? {
         query,
         sort,
-        ...searchTools({ query, sort, page: 1, pageSize: 50 }),
+        topic: facets.topic,
+        pricing: facets.pricing,
+        featured: facets.featured,
+        ...searchTools({
+          query,
+          sort,
+          page: 1,
+          pageSize: 50,
+          topic: facets.topic || undefined,
+          pricing: (facets.pricing || undefined) as Pricing | undefined,
+          featured: facets.featured,
+        }),
       }
     : undefined
 

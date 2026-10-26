@@ -3,9 +3,9 @@ import { isSearchSort, readSearchState, SEARCH_SORT_OPTIONS } from "./search-par
 
 describe("readSearchState", () => {
   it("读取 q / sort", () => {
-    expect(readSearchState(new URLSearchParams("?q=图像&sort=latest"))).toEqual({
+    expect(readSearchState(new URLSearchParams("?q=图像&sort=name"))).toEqual({
       query: "图像",
-      sort: "latest",
+      sort: "name",
     })
   })
 
@@ -13,8 +13,9 @@ describe("readSearchState", () => {
     expect(readSearchState(new URLSearchParams(""))).toEqual({ query: "", sort: "relevance" })
   })
 
-  it("非法 sort 回退到 relevance（不因为一个错参数就渲染异常）", () => {
+  it("非法 sort（含已下线的 latest）回退到 relevance", () => {
     expect(readSearchState(new URLSearchParams("?sort=whatever")).sort).toBe("relevance")
+    expect(readSearchState(new URLSearchParams("?sort=latest")).sort).toBe("relevance")
   })
 
   it("接受任何只要 get 的对象（Next 的 ReadonlyURLSearchParams 也满足）", () => {

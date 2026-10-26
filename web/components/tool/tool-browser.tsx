@@ -14,7 +14,7 @@ import {
 } from "react"
 import { useSearchParams } from "next/navigation"
 import type { Topic, Tool, ToolIndex } from "@/lib/types"
-import { MAX_TOOL_PAGE_SIZE, sortToolIndex, TOOL_PAGE_SIZE } from "@/lib/tool"
+import { decodeToolIndex, MAX_TOOL_PAGE_SIZE, sortToolIndex, TOOL_PAGE_SIZE, type ToolIndexPayload } from "@/lib/tool"
 import {
   getSort,
   getTab,
@@ -37,13 +37,20 @@ import {
   type ViewMode,
 } from "@/lib/tool-query"
 import { useMounted } from "@/hooks/use-mounted"
+import { formatCount } from "@/lib/format"
 import { PackageOpen } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import Link from "next/link"
 
 interface ToolBrowserProps {
-  /** 轻量索引：只含排序/筛选需要的字段，完整工具按页从 /api/tools 取。 */
-  index: readonly ToolIndex[]
+  /**
+   * 轻量索引：只含排序/筛选需要的字段。
+   * 页面默认不再传（HTML 会少约 470 KB），由组件在 hydration 后拉 `/api/index`。
+   * 测试/Storybook 仍可直接注入以获得确定性。
+   */
+  index?: readonly ToolIndex[]
+  /** 当前范围（主题页传 topic id），用于只拉该主题的索引。 */
+  topic?: string
   /** 首屏已由 server 渲染好的完整工具（默认推荐序前 N 条）。 */
   initialTools: readonly Tool[]
   /** 每页条数，默认 60。 */
@@ -88,6 +95,7 @@ function getUrlSearch(): string {
 
 export function ToolBrowser({
   index,
+  topic,
   initialTools,
   pageSize = TOOL_PAGE_SIZE,
   emptyTitle,
@@ -153,8 +161,7 @@ export function ToolBrowser({
     else params.delete("tab")
     if (view !== defaultView) params.set("view", view)
     else params.delete("view")
-    // latest tab 隐含时间排序，URL 不写 sort 以免污染用户排序偏好
-    if (tab !== "latest" && sort !== defaultSort) params.set("sort", sort)
+    if (sort !== defaultSort) params.set("sort", sort)
     else params.delete("sort")
 
     const qs = params.toString()
@@ -163,8 +170,7 @@ export function ToolBrowser({
     if (next !== current) window.history.replaceState(null, "", `${next}${window.location.hash}`)
   }, [tab, view, sort, defaultTab, defaultView, defaultSort, showTabs])
 
-  const isLatestTab = tab === "latest"
-  const resolvedSort: SortMode = isLatestTab ? "latest" : sort
+  const resolvedSort: SortMode = sort
 
   const setView = (v: ViewMode) => {
     persistView(v)
@@ -181,11 +187,35 @@ export function ToolBrowser({
     setTabOverride(t)
   }
 
+  // 索引外置：没有注入时在 hydration 后拉取；首屏先用 initialTools 渲染，避免空白/骨架。
+  const [lazyIndex, setLazyIndex] = useState<readonly ToolIndex[] | null>(null)
+  const [indexError, setIndexError] = useState(false)
+  const [indexRetry, setIndexRetry] = useState(0)
+
+  useEffect(() => {
+    if (index) return
+    const controller = new AbortController()
+    fetch(`/api/index${topic ? `?topic=${encodeURIComponent(topic)}` : ""}`, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        return response.json() as Promise<ToolIndexPayload | ToolIndex[]>
+      })
+      .then((payload) => {
+        setLazyIndex(decodeToolIndex(payload))
+        setIndexError(false)
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setIndexError(true)
+      })
+    return () => controller.abort()
+  }, [index, indexRetry, topic])
+
+  const effectiveIndex = index ?? lazyIndex
+  const indexReady = effectiveIndex !== null
+
   const [details, setDetails] = useState<Map<string, Tool>>(() => new Map(initialTools.map((tool) => [tool.id, tool])))
-  const [visibleState, setVisibleState] = useState(() => ({
-    key: `${tab}|${resolvedSort}`,
-    count: Math.min(MAX_TOOL_PAGE_SIZE, Math.max(1, pageSize)),
-  }))
+  /** 已加载条数与列表键绑定：切 tab/排序自动回到第一批，不需要额外的 reset effect。 */
+  const [visibleState, setVisibleState] = useState(() => ({ key: "", count: 0 }))
   const sentinelRef = useRef<HTMLDivElement>(null)
   const [retryToken, setRetryToken] = useState(0)
   const [errorKey, setErrorKey] = useState("")
@@ -201,18 +231,25 @@ export function ToolBrowser({
 
   const perPage = Math.min(MAX_TOOL_PAGE_SIZE, Math.max(1, pageSize))
   const listKey = `${tab}|${resolvedSort}`
-  const visibleCount = visibleState.key === listKey ? visibleState.count : perPage
 
   // 旧部署留下的 index 可能包含已被下架的工具；API 返回数量对不上时把它们从列表剔除，
   // 否则 missingKey 永远不变、列表会卡在骨架里。
-  const availableIndex = useMemo(() => index.filter((tool) => !unavailableIds.has(tool.id)), [index, unavailableIds])
+  const availableIndex = useMemo(
+    () => (effectiveIndex ?? []).filter((tool) => !unavailableIds.has(tool.id)),
+    [effectiveIndex, unavailableIds],
+  )
 
   const filtered = useMemo(() => {
+    if (!indexReady) return []
     const list = tab === "featured" ? availableIndex.filter((tool) => tool.featured) : availableIndex
     return sortToolIndex(list, resolvedSort)
-  }, [availableIndex, tab, resolvedSort])
+  }, [availableIndex, indexReady, tab, resolvedSort])
 
-  const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount])
+  const visibleCount = visibleState.key === listKey ? visibleState.count : perPage
+  const visible = useMemo(
+    () => (indexReady ? filtered.slice(0, visibleCount) : []),
+    [filtered, indexReady, visibleCount],
+  )
   const missingKey = useMemo(
     () =>
       visible
@@ -221,7 +258,7 @@ export function ToolBrowser({
         .join(","),
     [visible, mergedDetails],
   )
-  const hasMissing = missingKey.length > 0
+  const hasMissing = indexReady && missingKey.length > 0
   const fetchKey = hasMissing ? `${missingKey}|${retryToken}` : ""
   const loadError = hasMissing && errorKey === fetchKey
 
@@ -263,28 +300,34 @@ export function ToolBrowser({
     }
   }, [fetchKey, missingKey])
 
-  const visibleTools = useMemo(
-    () => visible.map((tool) => mergedDetails.get(tool.id)).filter((tool): tool is Tool => Boolean(tool)),
-    [visible, mergedDetails],
-  )
+  const visibleTools = useMemo(() => {
+    // 索引还没到时先展示 server 给的第一页；索引到达后切到正常的排序/分页派生。
+    if (!indexReady) return initialTools.slice(0, perPage)
+    return visible.map((tool) => mergedDetails.get(tool.id)).filter((tool): tool is Tool => Boolean(tool))
+  }, [indexReady, initialTools, mergedDetails, perPage, visible])
 
   // 主题 id→名称/图标 查找表（O(1)/次）；缺 topics 时返回空
   const topicMap = useMemo(() => new Map((topics ?? []).map((c) => [c.id, c])), [topics])
-  // 滚动加载：距底部 600px 时追加下一批；详情还在补时不叠请求。
+  /** 滚动到接近哨兵时追加一批；IntersectionObserver 不可用时保留首屏，不阻塞页面。 */
   useEffect(() => {
+    if (!indexReady || hasMissing) return
     const node = sentinelRef.current
     if (!node || typeof IntersectionObserver === "undefined") return
-    if (hasMissing || visible.length >= filtered.length) return
+    if (visibleCount >= filtered.length) return
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return
-        setVisibleState({ key: listKey, count: Math.min(visibleCount + perPage, filtered.length) })
+        setVisibleState((previous) => {
+          const current = previous.key === listKey ? previous.count : perPage
+          return { key: listKey, count: Math.min(current + perPage, filtered.length) }
+        })
       },
+      // 提前 600px 触发：滚到底之前就开始取下一批，避免出现“空白等待”
       { rootMargin: "600px 0px" },
     )
     observer.observe(node)
     return () => observer.disconnect()
-  }, [filtered.length, hasMissing, listKey, perPage, visible.length, visibleCount])
+  }, [filtered.length, hasMissing, indexReady, listKey, perPage, visibleCount])
 
   const topicOf = useCallback(
     (tool: Tool) => {
@@ -327,6 +370,17 @@ export function ToolBrowser({
         <UrlStateSync onChange={applyUrlState} />
       </Suspense>
       <div className="flex flex-col gap-4">
+        {indexError && !indexReady && (
+          <div
+            role="status"
+            className="flex items-center justify-between gap-3 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground"
+          >
+            <span>索引加载失败，排序与翻页暂不可用。</span>
+            <Button variant="outline" size="sm" onClick={() => setIndexRetry((token) => token + 1)}>
+              重试
+            </Button>
+          </div>
+        )}
         {/* 空结果时仍展示工具栏，保住主题图标/名称等页面身份信息 */}
         <ToolToolbar
           view={view}
@@ -340,7 +394,7 @@ export function ToolBrowser({
           onSortChange={setSort}
         />
 
-        {filtered.length === 0 ? (
+        {indexReady && filtered.length === 0 ? (
           <Empty className="py-12">
             <EmptyMedia variant="icon">
               <PackageOpen />
@@ -369,12 +423,11 @@ export function ToolBrowser({
             ) : (
               renderBrowserContent()
             )}
-
-            {filtered.length > perPage && (
+            {indexReady && filtered.length > perPage && (
               <div
                 ref={sentinelRef}
                 aria-live="polite"
-                className="flex flex-col items-center gap-2 border-t border-border pt-4 font-data text-xs text-muted-foreground"
+                className="flex flex-col items-center gap-2 border-t border-border pt-4 text-xs text-muted-foreground"
               >
                 {visible.length < filtered.length ? (
                   hasMissing ? (
@@ -387,14 +440,14 @@ export function ToolBrowser({
                     </>
                   ) : (
                     <span>
-                      已显示 {visibleTools.length} / {filtered.length}，继续向下滚动
+                      已显示 {formatCount(visible.length)} / {formatCount(filtered.length)}，继续向下滚动
                     </span>
                   )
                 ) : (
-                  <span>已显示全部 {filtered.length} 个工具</span>
+                  <span>已显示全部 {formatCount(filtered.length)} 个工具</span>
                 )}
               </div>
-            )}
+            )}{" "}
           </>
         )}
       </div>

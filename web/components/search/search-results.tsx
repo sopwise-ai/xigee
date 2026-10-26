@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
-import { Sparkles } from "lucide-react"
+import { CircleDollarSign, Sparkles, Star, Tag, X } from "lucide-react"
 import { FilterSelect } from "@/components/ui/filter-select"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -20,7 +20,13 @@ import {
   subscribeRecentSearches,
 } from "@/lib/recent-searches"
 import { SEARCH_FOCUS_RESULTS_EVENT, SEARCH_RESULT_SELECTOR, type SearchDoc } from "@/lib/search"
-import { readSearchState, SEARCH_SORT_OPTIONS, type SearchSort } from "@/lib/search-params"
+import {
+  readSearchFacets,
+  readSearchState,
+  SEARCH_PRICING_OPTIONS,
+  SEARCH_SORT_OPTIONS,
+  type SearchSort,
+} from "@/lib/search-params"
 import { writeSearchParams } from "@/lib/url"
 import type { Topic, Tool } from "@/lib/types"
 
@@ -28,6 +34,9 @@ import type { Topic, Tool } from "@/lib/types"
 export interface SearchInitial {
   query: string
   sort: SearchSort
+  topic: string
+  pricing: string
+  featured: boolean
   items: SearchDoc[]
   total: number
   related: SearchDoc[]
@@ -86,11 +95,15 @@ export function SearchResults({ featured, topics, topicCounts, initial }: Search
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const { query, sort } = readSearchState(searchParams)
+  const facets = readSearchFacets(searchParams)
+  const facetKey = `${facets.topic}|${facets.pricing}|${facets.featured}`
   const trimmedQuery = query.trim()
 
   const [retryToken, setRetryToken] = useState(0)
-  const requestKey = `${trimmedQuery}|${sort}|${retryToken}`
-  const initialKey = initial ? `${initial.query}|${initial.sort}|0` : ""
+  const requestKey = `${trimmedQuery}|${sort}|${facetKey}|${retryToken}`
+  const initialKey = initial
+    ? `${initial.query}|${initial.sort}|${initial.topic}|${initial.pricing}|${initial.featured}|0`
+    : ""
   /** 首屏已由 server 直出：跳过同参数的第一次客户端请求，换词/重试仍走 API。 */
   const skipInitialFetch = useRef(Boolean(initial))
   const [result, setResult] = useState<{
@@ -144,6 +157,9 @@ export function SearchResults({ featured, topics, topicCounts, initial }: Search
       page: "1",
       pageSize: String(PAGE_SIZE),
     })
+    if (facets.topic) params.set("topic", facets.topic)
+    if (facets.pricing) params.set("pricing", facets.pricing)
+    if (facets.featured) params.set("featured", "1")
 
     fetch(`/api/search?${params.toString()}`, { signal: controller.signal })
       .then((response) => {
@@ -162,7 +178,7 @@ export function SearchResults({ featured, topics, topicCounts, initial }: Search
       })
 
     return () => controller.abort()
-  }, [initialKey, requestKey, trimmedQuery, sort])
+  }, [facetKey, facets.featured, facets.pricing, facets.topic, initialKey, requestKey, trimmedQuery, sort])
 
   useEffect(() => () => loadMoreControllerRef.current?.abort(), [])
 
@@ -180,6 +196,9 @@ export function SearchResults({ featured, topics, topicCounts, initial }: Search
       page: String(nextPage),
       pageSize: String(PAGE_SIZE),
     })
+    if (facets.topic) params.set("topic", facets.topic)
+    if (facets.pricing) params.set("pricing", facets.pricing)
+    if (facets.featured) params.set("featured", "1")
 
     setLoadingMoreState({ key, value: true })
     fetch(`/api/search?${params.toString()}`, { signal: controller.signal })
@@ -201,7 +220,7 @@ export function SearchResults({ featured, topics, topicCounts, initial }: Search
           prev.key === key && loadMoreControllerRef.current === controller ? { key, value: false } : prev,
         )
       })
-  }, [items.length, loadingMore, requestKey, sort, total, trimmedQuery])
+  }, [facets.featured, facets.pricing, facets.topic, items.length, loadingMore, requestKey, sort, total, trimmedQuery])
 
   // 搜索列表同样走滚动加载：哨兵进入视口前 500px 就取下一页，不要求用户点按钮。
   useEffect(() => {
@@ -246,6 +265,16 @@ export function SearchResults({ featured, topics, topicCounts, initial }: Search
     [patch],
   )
   const handleClearRecent = useCallback(() => clearRecentSearches(), [])
+  const setFacet = useCallback(
+    (next: Partial<{ topic: string; pricing: string; featured: boolean }>) => {
+      patch({
+        topic: next.topic !== undefined ? next.topic || null : facets.topic || null,
+        pricing: next.pricing !== undefined ? next.pricing || null : facets.pricing || null,
+        featured: next.featured !== undefined ? (next.featured ? "1" : null) : facets.featured ? "1" : null,
+      })
+    },
+    [facets.featured, facets.pricing, facets.topic, patch],
+  )
 
   // 顶栏搜索框按 ↓ → 焦点进入第一条结果（两者无共同祖先，用全局事件解耦）
   useEffect(() => {
@@ -350,6 +379,43 @@ export function SearchResults({ featured, topics, topicCounts, initial }: Search
           onChange={(value) => handleSortChange(value as SearchSort)}
           active={sort !== "relevance"}
         />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <FilterSelect
+          label="按主题筛选"
+          icon={Tag}
+          value={facets.topic}
+          options={[
+            { value: "", label: "全部主题" },
+            ...topics.map((topic) => ({ value: topic.id, label: topic.name })),
+          ]}
+          onChange={(value) => setFacet({ topic: value })}
+          active={Boolean(facets.topic)}
+        />
+        <FilterSelect
+          label="按价格筛选"
+          icon={CircleDollarSign}
+          value={facets.pricing}
+          options={SEARCH_PRICING_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+          onChange={(value) => setFacet({ pricing: value })}
+          active={Boolean(facets.pricing)}
+        />
+        <Button
+          variant="outline"
+          aria-pressed={facets.featured}
+          onClick={() => setFacet({ featured: !facets.featured })}
+          className={facets.featured ? "border-brand/40 bg-brand/10 text-brand" : "text-muted-foreground"}
+        >
+          <Star aria-hidden />
+          只看精选
+        </Button>
+        {(facets.topic || facets.pricing || facets.featured) && (
+          <Button variant="ghost" onClick={() => patch({ topic: null, pricing: null, featured: null })}>
+            <X aria-hidden />
+            清除筛选
+          </Button>
+        )}
       </div>
 
       <div onKeyDown={handleListKeyDown} className="overflow-hidden rounded-lg border bg-card">

@@ -17,7 +17,7 @@ import {
 import { MAX_FALLBACK_QUERY_LENGTH, MAX_SEARCH_QUERY_LENGTH, MAX_SUGGEST_QUERY_LENGTH } from "./search-limits"
 import type { SearchSort } from "./search-params"
 import { compareDateDesc, compareName, getToolDate } from "./tool"
-import type { Tool } from "./types"
+import type { Pricing, Tool } from "./types"
 
 const tools = getAllTools()
 const topics = getAllTopics()
@@ -75,15 +75,23 @@ export function searchTools(input: {
   sort: SearchSort
   page: number
   pageSize: number
+  /** facets：在 Fuse 命中集合上再做交集过滤，总数/分页按过滤后计算。 */
+  topic?: string
+  pricing?: Pricing
+  featured?: boolean
 }): ToolSearchPage {
   const query = input.query.trim().slice(0, MAX_SEARCH_QUERY_LENGTH)
   if (!query) return { items: [], total: 0, hasMore: false, related: [] }
 
   const page = Math.max(1, Math.floor(input.page) || 1)
   const pageSize = Math.min(100, Math.max(1, Math.floor(input.pageSize) || 50))
-  const items = getSearchIndex()
+  let items = getSearchIndex()
     .search(query)
     .map((result) => result.item)
+
+  if (input.topic) items = items.filter((item) => item.topics.includes(input.topic as string))
+  if (input.pricing) items = items.filter((item) => item.pricing === input.pricing)
+  if (input.featured) items = items.filter((item) => item.featured === true)
 
   if (input.sort === "latest") {
     items.sort((a, b) => compareDateDesc(getToolDate(a), getToolDate(b)) || compareName(a, b))

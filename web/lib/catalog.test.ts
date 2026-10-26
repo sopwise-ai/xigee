@@ -27,6 +27,12 @@ describe("catalog", () => {
     expect(page.related).toEqual([])
   })
 
+  it("facets 在命中集合上过滤，并按过滤后总数分页", () => {
+    const page = searchTools({ query: "翻译", sort: "relevance", page: 1, pageSize: 100, topic: "translation" })
+    expect(page.total).toBeGreaterThan(0)
+    expect(page.items.every((item) => item.topics.includes("translation"))).toBe(true)
+  })
+
   it("空建议查询直接返回空数组", () => {
     expect(suggestTools("   ")).toEqual([])
   })

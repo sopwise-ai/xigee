@@ -20,7 +20,7 @@ describe("readUrlParams", () => {
   })
 
   it("tab 优先于 filter 别名", () => {
-    expect(readUrlParams("?tab=latest&filter=featured").tab).toBe("latest")
+    expect(readUrlParams("?tab=latest&filter=featured").tab).toBe("featured")
   })
 
   it("非法值归一化为 null", () => {
@@ -44,7 +44,7 @@ describe("isValidView / isValidSort", () => {
     expect(isValidView("grid")).toBe(true)
     expect(isValidView("list")).toBe(true)
     expect(isValidView("bogus")).toBe(false)
-    expect(isValidSort("latest")).toBe(true)
+    expect(isValidSort("latest")).toBe(false)
     expect(isValidSort("name-desc")).toBe(true)
     expect(isValidSort("bogus")).toBe(false)
   })
@@ -55,15 +55,15 @@ describe("resolveInitialTab", () => {
 
   it("展示 Tab 的页面：URL > 本地偏好 > 默认", () => {
     expect(resolveInitialTab({ ...base, urlTab: "featured" })).toBe("featured")
-    expect(resolveInitialTab({ ...base, storedTab: "latest" })).toBe("latest")
+    expect(resolveInitialTab({ ...base, storedTab: "featured" })).toBe("featured")
     expect(resolveInitialTab({ ...base })).toBe("all")
-    expect(resolveInitialTab({ ...base, urlTab: "featured", storedTab: "latest" })).toBe("featured")
+    expect(resolveInitialTab({ ...base, urlTab: "featured", storedTab: "featured" })).toBe("featured")
   })
 
   it("不展示 Tab 的页面（主题页）：忽略 URL 与本地偏好，恒为默认", () => {
     expect(resolveInitialTab({ ...base, showTabs: false, urlTab: "featured" })).toBe("all")
-    expect(resolveInitialTab({ ...base, showTabs: false, storedTab: "latest" })).toBe("all")
-    expect(resolveInitialTab({ ...base, showTabs: false, urlTab: "featured", storedTab: "latest" })).toBe("all")
+    expect(resolveInitialTab({ ...base, showTabs: false, storedTab: "featured" })).toBe("all")
+    expect(resolveInitialTab({ ...base, showTabs: false, urlTab: "featured", storedTab: "featured" })).toBe("all")
     expect(resolveInitialTab({ ...base, showTabs: false, defaultTab: "featured" })).toBe("featured")
   })
 })

@@ -2,9 +2,9 @@ export type TabMode = "all" | "latest" | "featured"
 export type ViewMode = "list" | "grid"
 export type SortMode = "recommended" | "latest" | "name-asc" | "name-desc"
 
-export const VALID_TABS: ReadonlySet<string> = new Set<TabMode>(["all", "latest", "featured"])
+export const VALID_TABS: ReadonlySet<string> = new Set<TabMode>(["all", "featured"])
 export const VALID_VIEWS: ReadonlySet<string> = new Set<ViewMode>(["list", "grid"])
-export const VALID_SORTS: ReadonlySet<string> = new Set<SortMode>(["recommended", "latest", "name-asc", "name-desc"])
+export const VALID_SORTS: ReadonlySet<string> = new Set<SortMode>(["recommended", "name-asc", "name-desc"])
 
 /** 旧版 URL 别名（?filter=featured/latest）→ tab，用于向后兼容。 */
 const FILTER_TO_TAB: Record<string, TabMode> = { featured: "featured", latest: "all" }

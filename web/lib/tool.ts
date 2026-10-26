@@ -2,7 +2,7 @@ import type { SortMode } from "./tool-query"
 import type { Tool, ToolIndex } from "./types"
 
 /** 列表首屏与「加载更多」的每页条数。 */
-export const TOOL_PAGE_SIZE = 60
+export const TOOL_PAGE_SIZE = 30
 
 /** 单次 /api/tools 最多返回的完整工具数（与列表每页上限共用）。 */
 export const MAX_TOOL_PAGE_SIZE = 100
@@ -101,23 +101,51 @@ export function sortToolIndex(index: readonly ToolIndex[], sort: SortMode): Tool
 }
 
 /**
- * 首屏预取的完整工具集合：覆盖四种排序的前 N 条 + 精选前 N 条。
+ * 索引的紧凑传输格式：id/name 各一个数组，featured 只存为 true 的下标。
  *
- * 这样 URL/本地偏好落在非默认排序时，客户端也有现成详情可渲染，不会先用骨架清空 SSR 内容、
- * 再额外发一次 `/api/tools`。总量最多 5×pageSize，详情体积仍远小于全量工具。
+ * 对象数组会为 6,175 条数据重复 4 个键名（约 470 KB）；数组化后约 185 KB，
+ * 配合 `/api/index` 的 CDN 缓存，避免把索引塞进 HTML 又保持交互所需的全量排序能力。
+ */
+export interface ToolIndexPayload {
+  ids: string[]
+  names: string[]
+  featured: number[]
+}
+
+export function encodeToolIndex(index: readonly ToolIndex[]): ToolIndexPayload {
+  const featured: number[] = []
+  index.forEach((tool, i) => {
+    if (tool.featured) featured.push(i)
+  })
+  return {
+    ids: index.map((tool) => tool.id),
+    names: index.map((tool) => tool.name),
+    featured,
+  }
+}
+
+export function decodeToolIndex(payload: ToolIndexPayload | readonly ToolIndex[]): ToolIndex[] {
+  if (Array.isArray(payload)) return payload as ToolIndex[]
+  const data = payload as ToolIndexPayload
+  const featured = new Set(data.featured ?? [])
+  return data.ids.map((id, i) => ({
+    id,
+    name: data.names[i] ?? "",
+    featured: featured.has(i) || undefined,
+  }))
+}
+
+/**
+ * 首屏预取的完整工具集合：只取默认「精选优先」排序的第一页。
+ *
+ * 以前会预取四种排序 + 精选，最多 5×pageSize 份完整工具（去重后仍 170+ 条），
+ * 这些对象全部进入 RSC/HTML，是首屏 1 MB 的重要来源。现在换排序/翻页由 `/api/tools`
+ * 按需补齐，首屏只带用户真正看到的 60 条。
  */
 export function getInitialToolIds(index: readonly ToolIndex[], pageSize = TOOL_PAGE_SIZE): string[] {
-  const ids = new Set<string>()
-  for (const sort of ["recommended", "latest", "name-asc", "name-desc"] as const) {
-    for (const tool of sortToolIndex(index, sort).slice(0, pageSize)) ids.add(tool.id)
-  }
-  for (const tool of sortToolIndex(
-    index.filter((item) => item.featured),
-    "recommended",
-  ).slice(0, pageSize)) {
-    ids.add(tool.id)
-  }
-  return [...ids]
+  return sortToolIndex(index, "recommended")
+    .slice(0, pageSize)
+    .map((tool) => tool.id)
 }
 
 /** 一组工具中最新的日期（原始串）；无日期返回 null。按日期部分比较，容忍格式差异。 */
