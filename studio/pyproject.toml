@@ -18,7 +18,7 @@ classifiers = [
 dependencies = [
     "fastapi>=0.146.0,<1.0",
     "uvicorn[standard]>=0.54.0,<1.0",
-    "sqlalchemy[asyncio]>=2.1.4,<3.0",
+    "sqlalchemy[asyncio]>=2.1.5,<3.0",
     "aiomysql>=0.2.0,<1.0",
     # MySQL 8 的默认认证插件是 caching_sha2_password, 而 prod 库就是 8.0。
     # 非 TLS 连接下 caching_sha2 的 full auth 分支要用服务端公钥做 RSA 加密密码,
