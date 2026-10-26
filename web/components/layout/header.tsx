@@ -11,6 +11,8 @@ import { pageShell } from "@/lib/layout"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { MAX_SEARCH_QUERY_LENGTH } from "@/lib/search-limits"
 import { searchPageHref, writeSearchQuery } from "@/lib/url"
+import { SearchSuggestions } from "@/components/search/search-suggestions"
+import type { SuggestionDoc } from "@/lib/search"
 import ThemeToggle from "./theme-toggle"
 import { MobileMenu } from "./mobile-menu"
 import type { Topic } from "@/lib/types"
@@ -26,14 +28,20 @@ function initialQuery(): string {
 }
 
 /**
- * 移动端搜索：展开后为受控输入框，失焦或按 Esc 收起（无独立关闭按钮，节省窄屏空间）。
- * 有内容时按 Esc 先清空，再次 Esc 才收起——与常见命令栏一致。
+ * 移动端搜索：展开后为受控输入框，失焦、X 或 Esc 收起。
+ * 与桌面共用 /api/suggest 与同一套建议面板，补齐移动端原本完全没有建议的缺口。
  *
  * 在搜索页内边打边搜（`replaceState`，零网络往返）；其余页面回车才跳转。
  * 外层 `<form action="/search">` 保证 hydration 完成前回车仍走原生 GET 提交。
  */
 function MobileSearchInput({ onClose, onCancel }: { onClose: () => void; onCancel: () => void }) {
   const [value, setValue] = useState(initialQuery)
+  const [dismissed, setDismissed] = useState(false)
+  const [suggestions, setSuggestions] = useState<{ query: string; items: readonly SuggestionDoc[] }>({
+    query: "",
+    items: [],
+  })
+  const [active, setActive] = useState({ query: "", index: -1 })
   const router = useRouter()
   const pathname = usePathname()
   const isSearchPage = pathname === "/search"
@@ -42,6 +50,25 @@ function MobileSearchInput({ onClose, onCancel }: { onClose: () => void; onCance
   useEffect(() => {
     if (isSearchPage) writeSearchQuery(deferred, pathname, window.location.search)
   }, [deferred, isSearchPage, pathname])
+
+  useEffect(() => {
+    const query = deferred.trim()
+    if (!query) return
+    const controller = new AbortController()
+    fetch(`/api/suggest?q=${encodeURIComponent(query)}`, { signal: controller.signal })
+      .then((response) => (response.ok ? (response.json() as Promise<SuggestionDoc[]>) : []))
+      .then((items) => setSuggestions({ query: deferred, items }))
+      .catch(() => {
+        if (!controller.signal.aborted) setSuggestions({ query: deferred, items: [] })
+      })
+    return () => controller.abort()
+  }, [deferred])
+
+  const settled = suggestions.query === deferred
+  const listboxId = "mobile-search-suggestions"
+  const items = settled ? suggestions.items : []
+  const open = !dismissed && Boolean(value.trim()) && settled
+  const activeIndex = active.query === value && active.index >= 0 && active.index < items.length ? active.index : -1
 
   const handleSearch = () => {
     const trimmed = value.trim()
@@ -59,8 +86,27 @@ function MobileSearchInput({ onClose, onCancel }: { onClose: () => void; onCance
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Enter 交给 <form onSubmit>：键盘提交与原生 GET 提交同一条路径，不重复触发
+    if (open) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault()
+        const current = active.query === value ? active.index : -1
+        const delta = e.key === "ArrowDown" ? 1 : -1
+        const next = current < 0 ? (delta > 0 ? 0 : items.length - 1) : (current + delta + items.length) % items.length
+        setActive({ query: value, index: next })
+        return
+      }
+      if (e.key === "Enter" && activeIndex >= 0) {
+        e.preventDefault()
+        document.getElementById(`${listboxId}-${activeIndex}`)?.click()
+        setActive({ query: value, index: -1 })
+        return
+      }
+    }
     if (e.key === "Escape") {
+      if (open) {
+        setDismissed(true)
+        return
+      }
       if (value) setValue("")
       else onCancel()
     }
@@ -79,10 +125,19 @@ function MobileSearchInput({ onClose, onCancel }: { onClose: () => void; onCance
           maxLength={MAX_SEARCH_QUERY_LENGTH}
           enterKeyHint="search"
           aria-label="搜索 AI 工具"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={open}
+          aria-controls={open ? listboxId : undefined}
+          aria-activedescendant={open && activeIndex >= 0 ? `${listboxId}-${activeIndex}` : undefined}
           autoComplete="off"
           placeholder="搜索 AI 工具…"
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => {
+            setValue(e.target.value)
+            setDismissed(false)
+            setActive({ query: e.target.value, index: -1 })
+          }}
           onKeyDown={handleKeyDown}
           onBlur={onClose}
         />
@@ -99,6 +154,22 @@ function MobileSearchInput({ onClose, onCancel }: { onClose: () => void; onCance
           </InputGroupButton>
         </InputGroupAddon>
       </InputGroup>
+      {open && (
+        <div
+          onPointerDown={(event) => event.preventDefault()}
+          className="fixed left-3 right-3 top-[calc(3.5rem+env(safe-area-inset-top))] z-[60]"
+        >
+          <SearchSuggestions
+            items={items}
+            query={value}
+            activeIndex={activeIndex}
+            listboxId={listboxId}
+            settled={settled}
+            onViewAll={handleSearch}
+            className="static"
+          />
+        </div>
+      )}
     </form>
   )
 }
