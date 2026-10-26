@@ -92,7 +92,7 @@
   --accent-foreground: #0f1115;
   --destructive: #ec1313;
   --border: rgba(0, 0, 0, 0.1);
-  --input: #8a8f94;
+  --input: var(--border);
   --ring: var(--primary);
   --chart-1: var(--primary);
   --chart-2: #22c55e;
@@ -142,7 +142,7 @@
   --accent-foreground: #f9fafb;
   --destructive: #f25a5a;
   --border: rgba(255, 255, 255, 0.12);
-  --input: #6f6f74;
+  --input: var(--border);
   --ring: var(--primary);
   --chart-1: var(--primary);
   --chart-2: #22c55e;
