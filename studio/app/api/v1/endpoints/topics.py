@@ -90,7 +90,7 @@ async def list_topic_tools(
             selectinload(Tool.links),
             selectinload(Tool.tool_topics).selectinload(ToolTopic.topic),
         )
-        .order_by(Tool.sort_order.desc(), Tool.published_at.desc(), Tool.id)
+        .order_by(Tool.ai_score.desc(), Tool.published_at.desc(), Tool.id)
         .offset((page - 1) * page_size)
         .limit(page_size)
     )

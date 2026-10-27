@@ -12,7 +12,9 @@
 //   它引用的 chat / code / research 在 topics.data.jsonc 样本里并未全部列出，
 //   跨文件一致性由校验脚本负责——该脚本当前【缺失】。
 //
-// 数组顺序：库里的 sort_order DESC → published_at DESC → id 升序做 tie-break。
+// 数组顺序：库里的 ai_score DESC → published_at DESC → id 升序做 tie-break。
+//   ai_score 是 AI 评分管线写出的派生列（0~1000），不是人工权重；它【不导出】，
+//   前端只消费这个数组的顺序，不需要也不应该拿到分数本身。
 //
 // 字段清单（16 个）:
 //   id             string   必填  ≤64           kebab-case

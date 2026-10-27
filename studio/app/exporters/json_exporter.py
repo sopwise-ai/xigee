@@ -226,7 +226,7 @@ async def _fetch_tools(session: AsyncSession) -> tuple[list[ExportItem], Counter
             selectinload(Tool.tool_topics).selectinload(ToolTopic.topic),
         )
         .where(Tool.status == ToolStatus.PUBLISHED)
-        .order_by(Tool.sort_order.desc(), Tool.published_at.desc(), Tool.id)
+        .order_by(Tool.ai_score.desc(), Tool.published_at.desc(), Tool.id)
     )
     rows = (await session.execute(stmt)).scalars().all()
 

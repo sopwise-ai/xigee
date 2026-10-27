@@ -6,12 +6,13 @@
   python skills/tools/api.py tool <id>                      查看工具详情
   python skills/tools/api.py add-tool --name <name> --tagline <一句话> --pricing <p> --origin <o> --access <a> --languages zh,en
                                   [--slug <slug>] [--url <url>] [--topic-ids 1,2] [--primary-topic-id N]
-                                  [--tags a,b] [--open-source] [--featured] [--description <desc>] [--sort-order N]
+                                  [--tags a,b] [--open-source] [--featured] [--description <desc>]
                                   [--status {draft,pending}]
   python skills/tools/api.py update-tool <id> [--status S] [--name <name>] [--tagline <t>] [--description <desc>]
                                   [--pricing <p>] [--origin <o>] [--access <a>] [--languages zh,en] [--tags a,b]
                                   [--topic-ids 1,2] [--primary-topic-id N] [--open-source | --no-open-source]
-                                  [--featured | --no-featured] [--slug <slug>] [--sort-order N]
+                                  [--featured | --no-featured] [--slug <slug>]
+                                  [--review-score N | --clear-review] [--reviewed-by <name>]
   python skills/tools/api.py delete-tool <id>
   python skills/tools/api.py topics [--status {active,disabled}] [--page N] [--page-size N] [--json]   列出主题
   python skills/tools/api.py topic <id>                 查看主题详情
@@ -463,7 +464,9 @@ def cmd_tools(args):
         total = len(data)
         page = args.page or 1
         page_size = args.page_size or 20
-        data = data[(max(page, 1) - 1) * page_size :][:page_size] if page_size > 0 else []
+        data = (
+            data[(max(page, 1) - 1) * page_size :][:page_size] if page_size > 0 else []
+        )
         # CLI 不打印响应头, 表格尾部的 "(共 N 条)" 按关键字过滤后的总数显示。
         resp_headers = {"x-total-count": str(total)}
     else:
@@ -483,6 +486,7 @@ def cmd_tools(args):
                 "name",
                 "slug",
                 "status_name",
+                "ai_score",
                 "pricing",
                 "is_featured",
                 "topic_names",
@@ -492,6 +496,7 @@ def cmd_tools(args):
                 "name": "名称",
                 "slug": "Slug",
                 "status_name": "状态",
+                "ai_score": "AI分",
                 "pricing": "定价",
                 "is_featured": "精选",
                 "topic_names": "主题",
@@ -532,8 +537,6 @@ def cmd_add_tool(args):
         payload["tags"] = _split_csv(args.tags)
     if args.description is not None:
         payload["description"] = args.description
-    if args.sort_order is not None:
-        payload["sort_order"] = args.sort_order
     _, data = _write("POST", "/tools", payload, summary=f"添加工具: {args.name}")
     if data:
         _print_json(data)
@@ -569,8 +572,13 @@ def cmd_update_tool(args):
         payload["is_featured"] = args.featured
     if args.slug:
         payload["slug"] = args.slug
-    if args.sort_order is not None:
-        payload["sort_order"] = args.sort_order
+    if args.clear_review:
+        # 显式 null 才是"撤销复核"的语义；省略该键表示不动
+        payload["review_score"] = None
+    elif args.review_score is not None:
+        payload["review_score"] = args.review_score
+    if args.reviewed_by is not None:
+        payload["reviewed_by"] = args.reviewed_by
 
     confirm_text = ""
     new_status_name = TOOL_STATUS_NAMES.get(args.status or "", "?")
@@ -992,7 +1000,9 @@ def main():
     p.add_argument("--status", choices=tool_status, help="按状态过滤")
     p.add_argument("--topic-id", type=int, help="按主题过滤")
     p.add_argument("--featured", action="store_true", help="仅精选")
-    p.add_argument("--search", help="按名称/slug/tagline/标签搜索（覆盖全部候选，结果客户端分页）")
+    p.add_argument(
+        "--search", help="按名称/slug/tagline/标签搜索（覆盖全部候选，结果客户端分页）"
+    )
     p.add_argument("--page", type=int, default=1)
     p.add_argument("--page-size", type=int, default=20)
     p.add_argument("--json", action="store_true", help="输出 JSON")
@@ -1019,7 +1029,6 @@ def main():
     p.add_argument("--open-source", action="store_true", help="标记为开源")
     p.add_argument("--featured", action="store_true")
     p.add_argument("--description")
-    p.add_argument("--sort-order", type=int, default=None)
     p.add_argument(
         "--status",
         choices=("draft", "pending"),
@@ -1045,7 +1054,16 @@ def main():
     p.add_argument("--open-source", action=argparse.BooleanOptionalAction, default=None)
     p.add_argument("--featured", action=argparse.BooleanOptionalAction, default=None)
     p.add_argument("--slug")
-    p.add_argument("--sort-order", type=int, default=None)
+    p.add_argument(
+        "--review-score",
+        type=int,
+        default=None,
+        help="人工复核分 0~1000（写入后自动记复核时间；不参与排序）",
+    )
+    p.add_argument(
+        "--clear-review", action="store_true", help="撤销复核（review_score 置 NULL）"
+    )
+    p.add_argument("--reviewed-by", default=None, help="复核人标识")
     p.set_defaults(func=cmd_update_tool)
 
     # delete tool

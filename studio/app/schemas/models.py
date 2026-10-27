@@ -10,6 +10,7 @@
 """
 
 from datetime import date, datetime
+from typing import Any
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -27,6 +28,9 @@ MAX_URL_LENGTH = 2048
 # 卡片文案上限。中文习惯 21~47 字; 同样信息量的英文约为中文的 2 倍字符, 现有最长文案
 # (47 字) 的英文版约 95 字符, 所以 100 刚好覆盖且仍在一张卡片两行(line-clamp-2)的显示容量内。
 MAX_TAGLINE_LENGTH = 100
+# AI 评分的值域(与 schema.sql 的 SMALLINT/0~1000 口径一致)。派生列本身不由 API
+# 写入,这里只用于人工复核分 review_score —— 它与 ai_score 同一把尺子,才好校准。
+MAX_AI_SCORE = 1000
 _LANG_CODE_LENGTH = 2
 
 
@@ -200,7 +204,6 @@ class ToolBase(BaseModel):
     languages: list[str]
     tags: list[str] = Field(default_factory=list)
     is_featured: bool = False
-    sort_order: int = Field(0, ge=0)
     status: ToolStatus = ToolStatus.DRAFT
 
     _validate_name = field_validator("name")(_check_name)
@@ -247,8 +250,12 @@ class ToolUpdate(BaseModel):
     languages: list[str] | None = None
     tags: list[str] | None = None
     is_featured: bool | None = None
-    sort_order: int | None = Field(None, ge=0)
     status: ToolStatus | None = None
+    # ── 人工复核(唯一的可写入口;AI 字段不在任何输入 schema 里) ──────────────
+    # review_score 传 null = 撤销复核(端点会把 reviewed_at/reviewed_by 一并清空);
+    # 传值则端点自动补 reviewed_at 与 reviewed_by(缺省沿用原复核人)。
+    review_score: int | None = Field(None, ge=0, le=MAX_AI_SCORE)
+    reviewed_by: str | None = Field(None, max_length=64)
     topic_ids: list[int] | None = None
     primary_topic_id: int | None = None
 
@@ -282,6 +289,18 @@ class ToolResponse(ToolBase):
     updated_at: datetime
     topics: list[TopicResponse] = Field(default_factory=list)
     links: list[ToolLinkResponse] = Field(default_factory=list)
+
+    # AI 产出(只读;管理端可见,导出物里没有)。ai_score 是排序键,其余是审计/复核
+    # 需要的上下文 —— 前端读的是 web/data/*.json 静态产物,看不到这些字段。
+    ai_score: int = 0
+    ai_score_confidence: float | None = None
+    ai_score_version: str | None = None
+    ai_score_at: datetime | None = None
+    ai_topics: list[dict[str, Any]] | None = None
+    # 人工复核(只读回显;写入口是 ToolUpdate 的 review_score)
+    review_score: int | None = None
+    reviewed_at: datetime | None = None
+    reviewed_by: str | None = None
 
     model_config = {"from_attributes": True}
 

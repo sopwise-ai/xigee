@@ -277,7 +277,7 @@ async def list_tools(
         selectinload(Tool.links),
         selectinload(Tool.tool_topics).selectinload(ToolTopic.topic),
     )
-    stmt = stmt.order_by(Tool.sort_order.desc(), Tool.published_at.desc(), Tool.id)
+    stmt = stmt.order_by(Tool.ai_score.desc(), Tool.published_at.desc(), Tool.id)
     stmt = stmt.offset((page - 1) * page_size).limit(page_size)
 
     result = await db.execute(stmt)
@@ -356,11 +356,11 @@ async def update_tool(tool_id: int, data: ToolUpdate, db: DbSession) -> Tool:
     if not tool:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tool not found")
 
-    # 只有真正可空的列允许显式 null 清空(description 与 access 复检日期);
+    # 只有真正可空的列允许显式 null 清空(description / access 复检日期 / 人工复核);
     # 其余 None 一律忽略——把 None 写进 NOT NULL 的列只会换来一个 500
     update_data = drop_none(
         data.model_dump(exclude_unset=True),
-        keep_none=("description", "last_access_check_at"),
+        keep_none=("description", "last_access_check_at", "review_score", "reviewed_by"),
     )
 
     if "slug" in update_data and update_data["slug"] != tool.slug:
@@ -394,8 +394,27 @@ async def update_tool(tool_id: int, data: ToolUpdate, db: DbSession) -> Tool:
             tool.published_at = await db.scalar(select(func.current_date()))
 
     for key, value in update_data.items():
-        if key not in ("topic_ids", "primary_topic_id"):
+        if key not in ("topic_ids", "primary_topic_id", "review_score", "reviewed_by"):
             setattr(tool, key, value)
+
+    # 人工复核:review_score 是唯一的结论字段,reviewed_at/by 由它驱动,不允许单独漂移。
+    #   - 显式 null            → 撤销复核,三列一起清空
+    #   - 有值                 → 复核时间取【库的会话时钟】(与 published_at 同一口径)
+    #   - 只传 reviewed_by     → 只在已有复核结论时更新署名,不凭空造出"已复核"
+    # 这几个字段【不能】进通用 setattr:否则 null 清 review_score 时 reviewed_at 会留旧值。
+    review_score_sent = "review_score" in update_data
+    reviewed_by_sent = "reviewed_by" in update_data
+    if review_score_sent:
+        tool.review_score = update_data["review_score"]
+        if tool.review_score is None:
+            tool.reviewed_at = None
+            tool.reviewed_by = None
+        else:
+            tool.reviewed_at = await db.scalar(select(func.current_timestamp()))
+            if reviewed_by_sent:
+                tool.reviewed_by = update_data["reviewed_by"]
+    elif reviewed_by_sent and tool.review_score is not None:
+        tool.reviewed_by = update_data["reviewed_by"]
 
     if "topic_ids" in update_data or "primary_topic_id" in update_data:
         new_primary = update_data.get("primary_topic_id")

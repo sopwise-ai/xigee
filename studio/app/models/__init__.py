@@ -14,7 +14,9 @@
 """
 
 from datetime import date, datetime
+from decimal import Decimal
 from enum import StrEnum
+from typing import Any
 
 from sqlalchemy import (
     CHAR,
@@ -26,6 +28,8 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
+    SmallInteger,
     String,
     UniqueConstraint,
     func,
@@ -179,7 +183,7 @@ class Tool(Base):
     __table_args__ = (
         UniqueConstraint("slug", name="uk_tool_slug"),
         UniqueConstraint("name", name="uk_tool_name"),
-        Index("idx_tool_status_sort", "status", "sort_order"),
+        Index("idx_tool_status_score", "status", "ai_score"),
     )
 
     # ── 非列属性(同上, 见 Topic 的说明) ────────────────────────────────────────
@@ -205,7 +209,24 @@ class Tool(Base):
     # NULL 行必须能读出来, 所以这里不能声明成 NOT NULL —— 导出/响应各自把 None 当 []
     tags: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     is_featured: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0")
-    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
+    # ── AI 评分(派生数据,唯一写入口是 app/scoring 的离线管线) ────────────────
+    # ai_score 是物化后的排序键(0~1000):它由 breakdown 里的维度分、权重、采样与
+    # 先验算出来,不是事实源。要改口径就重跑管线并递增 version,不要手改这一列。
+    ai_score: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="0")
+    ai_score_confidence: Mapped[Decimal | None] = mapped_column(Numeric(3, 2), nullable=True)
+    ai_score_breakdown: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    ai_score_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    ai_score_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ai_topics: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+
+    # ── 人工复核(AI 管线不许写) ───────────────────────────────────────────────
+    # review_score 为 NULL 即"未复核":一个字段同时承担标识与结论,避免出现
+    # "标记为已复核、但没有复核结论"的自相矛盾状态。它只用于校准评分,不参与排序。
+    review_score: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reviewed_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
     status: Mapped[ToolStatus] = mapped_column(
         _enum_column(ToolStatus, "tool_status", 16),
         nullable=False,

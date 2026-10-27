@@ -478,7 +478,7 @@ async def test_export_tool_count_matches_member_rule(async_client, tmp_path):
 
 
 async def test_export_stable_order_tiebreak_by_id(async_client, tmp_path):
-    """sort_order 与 published_at 均相同时按 id 升序, 保证导出顺序稳定。"""
+    """ai_score 与 published_at 均相同时按 id 升序, 保证导出顺序稳定。"""
     first = await create_tool(
         async_client, slug="pa", name="PA", status="published", links=[{"url": "https://a.example.com"}]
     )
@@ -489,7 +489,7 @@ async def test_export_stable_order_tiebreak_by_id(async_client, tmp_path):
         await session.execute(
             update(Tool)
             .where(Tool.id.in_([first["id"], second["id"]]))
-            .values(sort_order=5, published_at=date(2026, 1, 1))
+            .values(ai_score=5, published_at=date(2026, 1, 1))
         )
         await session.commit()
 
@@ -500,7 +500,7 @@ async def test_export_stable_order_tiebreak_by_id(async_client, tmp_path):
     assert [tool["id"] for tool in _read(tmp_path / "tools-dev.json")] == ["pa", "pb"]
 
 
-async def test_export_tool_order_by_sort_order_desc(async_client, tmp_path):
+async def test_export_tool_order_by_ai_score_desc(async_client, tmp_path):
     low = await create_tool(
         async_client, slug="low", name="低", status="published", links=[{"url": "https://low.example.com"}]
     )
@@ -509,7 +509,7 @@ async def test_export_tool_order_by_sort_order_desc(async_client, tmp_path):
         slug="high",
         name="高",
         status="published",
-        sort_order=100,
+        ai_score=100,
         links=[{"url": "https://high.example.com"}],
     )
 
@@ -518,8 +518,8 @@ async def test_export_tool_order_by_sort_order_desc(async_client, tmp_path):
         await async_client.post("/api/v1/export")
 
     assert [tool["id"] for tool in _read(tmp_path / "tools-dev.json")] == ["high", "low"]
-    assert high["sort_order"] == 100
-    assert low["sort_order"] == 0
+    assert high["ai_score"] == 100
+    assert low["ai_score"] == 0
 
 
 async def test_export_link_and_topic_order_is_deterministic(async_client, tmp_path):

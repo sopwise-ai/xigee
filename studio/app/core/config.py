@@ -52,6 +52,20 @@ class Settings(BaseSettings):
 
     api_key: str = "dev-secret-key"
 
+    # ── AI 评分管线(app/scoring,离线跑;服务进程本身不调用模型) ──────────────
+    # 刻意不进服务启动校验:没有 key 也要能正常起服务、跑测试。真正需要它的是
+    # `python -m app.scoring`,由那边在开跑前检查并给出可读报错。
+    # 走 OpenAI 兼容协议(DeepSeek / OpenAI / 自建 vLLM 都适用)。
+    llm_base_url: str = "https://api.deepseek.com/v1"
+    llm_api_key: str = ""
+    llm_model: str = "deepseek-chat"
+    llm_timeout: float = Field(60.0, gt=0)
+    llm_temperature: float = Field(0.2, ge=0, le=2)
+    # 单个工具采样几次。N>1 是为了拿"采样一致率"当置信度,并给维度分取中位数;
+    # 调到 1 会退化成单次裸分(不推荐,见 app/scoring/aggregate.py 的说明)。
+    scoring_samples: int = Field(3, ge=1, le=9)
+    scoring_concurrency: int = Field(4, ge=1, le=32)
+
     model_config = SettingsConfigDict(
         env_file=str(_STUDIO_ROOT / f".env.{os.getenv('APP_ENV', 'dev')}"),
         env_file_encoding="utf-8",

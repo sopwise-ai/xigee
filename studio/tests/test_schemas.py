@@ -314,6 +314,9 @@ def test_topic_sort_order_rejects_negative():
         TopicCreate(slug="topic", name="主题", sort_order=-1)
 
 
-def test_tool_sort_order_rejects_negative():
+def test_tool_review_score_rejects_out_of_range():
+    """review_score 与 ai_score 同一把尺子(0~1000),越界必须 422。"""
     with pytest.raises(ValidationError):
-        ToolUpdate(sort_order=-1)
+        ToolUpdate(review_score=-1)
+    with pytest.raises(ValidationError):
+        ToolUpdate(review_score=1001)

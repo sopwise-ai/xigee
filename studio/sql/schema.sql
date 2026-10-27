@@ -22,7 +22,8 @@
 --   topics[]  WHERE status='active'  ORDER BY sort_order DESC, id ASC
 --             id 取 slug；toolCount 由导出端按最终的 tools[] 就地聚合
 --   tools[]   WHERE status='published' AND 存在 status='active' 的链接
---             ORDER BY sort_order DESC, published_at DESC, id ASC
+--             ORDER BY ai_score DESC, published_at DESC, id ASC
+--             ai_score 是【派生列】（AI 评分管线写入），不是人工可编辑字段
 --             url      ← 主链接的 url（库里已是归一化值；取不到则回退首个 active 链接）
 --             topics[] ← xg_topic.slug（【不是】topic_id）；首个即主主题（is_primary=1）
 --             links[]  ← 非主链接且 active，且排除已被选作 url 的那一条
@@ -42,6 +43,9 @@
 --   6. 字符集 utf8mb4 / utf8mb4_general_ci（5.7 与 8.0 都有）
 --   7. 时间列用 DATETIME + CURRENT_TIMESTAMP，取【服务器会话时区】，不是 UTC
 --   8. 索引只留真实访问路径；数据量上来后再按需加
+--   9. ai_* 是派生数据：唯一写入口是 app/scoring 的离线管线，API/人工都不改它；
+--      改模型或 rubric 要递增 ai_score_version 并重跑，不要手改 ai_score
+--  10. review_* 是人工数据：AI 管线不许写；review_score 只做校准集，不参与排序
 -- ============================================================================
 
 
@@ -75,6 +79,14 @@ CREATE TABLE IF NOT EXISTS xg_topic (
 --              后者说源码是否开放。开源工具同样可以有付费的云托管版。
 --    languages 界面支持语言，ISO 639-1 数组，首项为主语言（位置即语义）。
 --    tags      标签数组，最多 8 个；展示/检索用，无受控词表。
+--    ai_score  评分体系的【派生列】，由 app/scoring 离线管线写入：
+--                raw = Σ w_i * ((s_i - 1) / 4)          六个维度，1~5 分
+--                shrunk = (n * raw + m * prior) / (n + m) 经验贝叶斯收缩（n=证据条数）
+--                ai_score = round(shrunk * 1000)        0~1000，越大越靠前
+--              原始维度分、权重、采样与先验都留在 ai_score_breakdown，不要只凭
+--              ai_score 反推口径；改 rubric/模型必须同时递增 ai_score_version。
+--    review_*  人工复核产物。review_score 为 NULL 即"未复核"，它同时是标识和标签；
+--              只用于校准 AI（回归测试集），【绝不参与排序】。
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS xg_tool (
   id                   BIGINT       NOT NULL AUTO_INCREMENT,
@@ -90,7 +102,15 @@ CREATE TABLE IF NOT EXISTS xg_tool (
   languages            JSON         NOT NULL              COMMENT '界面支持语言，如 ["zh","en"]，至少 1 项，首项为主语言',
   tags                 JSON         DEFAULT NULL          COMMENT '标签数组，如 ["ds","开源"]，最多 8 个；NULL 视同空数组',
   is_featured          TINYINT(1)   NOT NULL DEFAULT 0    COMMENT '是否精选',
-  sort_order           INT          NOT NULL DEFAULT 0    COMMENT '排序权重（越大越靠前）；决定 tools 数组顺序',
+  ai_score             SMALLINT     NOT NULL DEFAULT 0    COMMENT 'AI 评分 0~1000（越大越靠前）；派生值，唯一排序依据',
+  ai_score_confidence  DECIMAL(3,2) DEFAULT NULL          COMMENT '评分置信度 0.00~1.00（N 次采样一致率）；不导出',
+  ai_score_breakdown   JSON         DEFAULT NULL          COMMENT '维度分/权重/采样明细；复算与复核依据，不导出',
+  ai_score_version     VARCHAR(32)  DEFAULT NULL          COMMENT '评分口径签名（模型+rubric+权重版本）；不导出',
+  ai_score_at          DATETIME     DEFAULT NULL          COMMENT '上次评分时间（NULL=从未评分）；不导出',
+  ai_topics            JSON         DEFAULT NULL          COMMENT 'AI 主题分类建议 [{slug,confidence}]；不导出',
+  review_score         SMALLINT     DEFAULT NULL          COMMENT '人工复核分 0~1000（NULL=未复核）；不参与排序、不导出',
+  reviewed_at          DATETIME     DEFAULT NULL          COMMENT '人工复核时间（不导出）',
+  reviewed_by          VARCHAR(64)  DEFAULT NULL          COMMENT '复核人标识（不导出）',
   status               VARCHAR(16)  NOT NULL DEFAULT 'draft' COMMENT 'draft | pending | published | archived；仅 published 导出',
   published_at         DATE         DEFAULT NULL          COMMENT '收录进本站的日期（首次转为 published 时写入一次）',
   created_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '入库时间（审计，不导出）',
@@ -98,7 +118,7 @@ CREATE TABLE IF NOT EXISTS xg_tool (
   PRIMARY KEY (id),
   UNIQUE KEY uk_tool_slug (slug),
   UNIQUE KEY uk_tool_name (name),
-  KEY idx_tool_status_sort (status, sort_order)
+  KEY idx_tool_status_score (status, ai_score)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='工具主表';
 
 

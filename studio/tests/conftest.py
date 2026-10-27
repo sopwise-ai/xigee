@@ -22,12 +22,12 @@ from typing import Any
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
+from sqlalchemy import text, update
 
 from app.core.config import Settings, get_settings
 from app.core.database import AsyncSessionLocal, engine
 from app.main import app
-from app.models import ToolStatus
+from app.models import Tool, ToolStatus
 
 settings = get_settings()
 API_KEY = settings.api_key
@@ -198,7 +198,7 @@ async def create_tool(
     languages: list[str] | None = None,
     tags: list[str] | None = None,
     is_featured: bool = False,
-    sort_order: int = 0,
+    ai_score: int = 0,
     status: str = ToolStatus.DRAFT,
     topic_ids: list[int] | None = None,
     primary_topic_id: int | None = None,
@@ -224,7 +224,6 @@ async def create_tool(
         "languages": languages if languages is not None else ["zh"],
         "tags": tags if tags is not None else [],
         "is_featured": is_featured,
-        "sort_order": sort_order,
         "status": create_status,
     }
     if description is not None:
@@ -249,6 +248,14 @@ async def create_tool(
         resp = await client.put(f"/api/v1/tools/{data['id']}", json={"status": ToolStatus.ARCHIVED})
         assert resp.status_code == 200, resp.text
         data = resp.json()
+
+    if ai_score:
+        # ai_score 是派生列,API 刻意不提供写入口(唯一写入口是 app/scoring 管线)。
+        # 测试里要造排序场景,就直接改库 —— 和管线写回的是同一列,语义一致。
+        async with AsyncSessionLocal() as session:
+            await session.execute(update(Tool).where(Tool.id == data["id"]).values(ai_score=ai_score))
+            await session.commit()
+        data["ai_score"] = ai_score
 
     return data
 

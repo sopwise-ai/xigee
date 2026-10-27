@@ -260,7 +260,7 @@ async def test_pagination(async_client):
 
 
 async def test_list_tools_order_is_deterministic_on_tie(async_client):
-    """sort_order / published_at 并列时按 id 升序, 保证翻页顺序稳定。"""
+    """ai_score / published_at 并列时按 id 升序, 保证翻页顺序稳定。"""
     a = await create_tool(async_client, slug="tie-a", name="并列A")
     b = await create_tool(async_client, slug="tie-b", name="并列B")
     c = await create_tool(async_client, slug="tie-c", name="并列C")
@@ -426,7 +426,7 @@ async def test_update_tool_ignores_explicit_null(async_client):
 
     resp = await async_client.put(
         f"/api/v1/tools/{tool['id']}",
-        json={"status": None, "tags": None, "languages": None, "sort_order": None, "topic_ids": None},
+        json={"status": None, "tags": None, "languages": None, "review_score": None, "topic_ids": None},
     )
     assert resp.status_code == 200, resp.text
     data = resp.json()
@@ -441,6 +441,51 @@ async def test_update_tool_can_clear_description(async_client):
     resp = await async_client.put(f"/api/v1/tools/{tool['id']}", json={"description": None})
     assert resp.status_code == 200, resp.text
     assert resp.json()["description"] is None
+
+
+async def test_update_tool_sets_review_and_timestamp(async_client):
+    """人工复核: 写 review_score 自动补 reviewed_at, 且不覆盖 AI 分。"""
+    tool = await create_tool(async_client, slug="reviewed", name="已复核", ai_score=900)
+
+    resp = await async_client.put(f"/api/v1/tools/{tool['id']}", json={"review_score": 780, "reviewed_by": "alice"})
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["review_score"] == 780
+    assert data["reviewed_by"] == "alice"
+    assert data["reviewed_at"] is not None
+    # 复核分是校准用的, 绝不能改写排序键
+    assert data["ai_score"] == 900
+
+
+async def test_update_tool_can_clear_review(async_client):
+    """review_score 显式 null = 撤销复核, 三列必须一起清空(不留半截状态)。"""
+    tool = await create_tool(async_client, slug="unreview", name="撤销复核")
+    await async_client.put(f"/api/v1/tools/{tool['id']}", json={"review_score": 700, "reviewed_by": "bob"})
+
+    resp = await async_client.put(f"/api/v1/tools/{tool['id']}", json={"review_score": None})
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["review_score"] is None
+    assert data["reviewed_at"] is None
+    assert data["reviewed_by"] is None
+
+
+async def test_review_score_out_of_range_is_422(async_client):
+    tool = await create_tool(async_client, slug="bad-review", name="越界复核")
+    resp = await async_client.put(f"/api/v1/tools/{tool['id']}", json={"review_score": 1001})
+    assert resp.status_code == 422
+
+
+async def test_list_tools_orders_by_ai_score(async_client):
+    """列表排序键是 ai_score DESC, 不再是人工 sort_order。"""
+    await create_tool(async_client, slug="score-low", name="低分", ai_score=100)
+    await create_tool(async_client, slug="score-high", name="高分", ai_score=900)
+
+    resp = await async_client.get("/api/v1/tools")
+
+    assert [item["slug"] for item in resp.json()] == ["score-high", "score-low"]
 
 
 async def test_create_tool_primary_topic_must_be_in_topic_ids(async_client):

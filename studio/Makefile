@@ -45,7 +45,7 @@ PROD_HOST ?= 0.0.0.0
 # 所以必须显式写成 recipe 前缀; 默认空 —— 门禁的默认姿态仍然是"拒绝"。
 ALLOW_SHARED_DB ?=
 
-.PHONY: sync db-init dev sit prod lint typecheck format check test test-cov export-dev export-sit export-prod clean
+.PHONY: sync db-init dev sit prod lint typecheck format check test test-cov score export-dev export-sit export-prod clean
 
 sync:
 	uv sync
@@ -91,6 +91,11 @@ test:
 
 test-cov:
 	APP_ENV=$(APP_ENV) STUDIO_ALLOW_SHARED_DB_TRUNCATE=$(ALLOW_SHARED_DB) uv run pytest --cov=app --cov-report=term-missing -v
+
+# AI 分类 + 评分: 默认只补 ai_score_at 为空的工具。
+# 例: make score ARGS="--limit 10 --dry-run" / make score ARGS="--all --apply-topics"
+score:
+	APP_ENV=$(APP_ENV) uv run python -m app.scoring $(ARGS)
 
 # 导出产物是【两个文件】: topics-{env}.json / tools-{env}.json
 # (prod 额外同步无后缀的 topics.json / tools.json 给前端)。
