@@ -32,7 +32,7 @@ describe("ToolBrowser a11y ids", () => {
     const { container } = render(<ToolBrowser index={index} initialTools={tools} />)
     const tabs = container.querySelectorAll<HTMLElement>('[role="tab"]')
     const panel = container.querySelector<HTMLElement>('[role="tabpanel"]')
-    expect(tabs.length).toBe(3)
+    expect(tabs.length).toBe(2)
     expect(panel).not.toBeNull()
     for (const tab of tabs) {
       expect(tab.getAttribute("aria-controls")).toBe(panel!.id)
@@ -54,8 +54,8 @@ describe("ToolBrowser a11y ids", () => {
     expect(panels[0].id).not.toBe(panels[1].id)
     // 每个实例的 tab 都应指向自己那一侧的 panel
     const allTabs = [...container.querySelectorAll<HTMLElement>('[role="tab"]')]
-    expect(allTabs.filter((t) => t.getAttribute("aria-controls") === panels[0].id).length).toBe(3)
-    expect(allTabs.filter((t) => t.getAttribute("aria-controls") === panels[1].id).length).toBe(3)
+    expect(allTabs.filter((t) => t.getAttribute("aria-controls") === panels[0].id).length).toBe(2)
+    expect(allTabs.filter((t) => t.getAttribute("aria-controls") === panels[1].id).length).toBe(2)
   })
 })
 
@@ -108,7 +108,40 @@ describe("ToolBrowser 分页加载", () => {
     vi.unstubAllGlobals()
   })
 
-  it("首屏只渲染 pageSize 条，加载更多时按 id 补齐完整工具", async () => {
+  it("未注入索引时先渲染 server 首屏，索引到达后再出现分页", async () => {
+    const many = ["a", "b", "c", "d", "e"].map(makeTool)
+    const first = many.slice(0, 2)
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).startsWith("/api/index")) {
+          return { ok: true, json: async () => many.map(toToolIndex) } as unknown as Response
+        }
+        return { ok: true, json: async () => [] } as unknown as Response
+      }),
+    )
+
+    render(<ToolBrowser initialTools={first} pageSize={2} />)
+    expect(screen.getAllByText(/Tool [a-e]/)).toHaveLength(2)
+    await waitFor(() => expect(screen.getByText(/已显示 2 \/ 5/)).toBeInTheDocument())
+  })
+
+  it("首屏只渲染 pageSize 条，滚动到哨兵时按 id 补齐下一批", async () => {
+    const callbacks: IntersectionObserverCallback[] = []
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          callbacks.push(callback)
+        }
+        observe() {}
+        disconnect() {}
+        unobserve() {}
+        takeRecords() {
+          return []
+        }
+      },
+    )
     const many = ["a", "b", "c", "d", "e"].map(makeTool)
     const first = many.slice(0, 2)
     const fetchMock = vi.fn().mockResolvedValue({
@@ -120,9 +153,17 @@ describe("ToolBrowser 分页加载", () => {
     render(<ToolBrowser index={many.map(toToolIndex)} initialTools={first} pageSize={2} />)
 
     expect(screen.getAllByText(/Tool [a-e]/)).toHaveLength(2)
-    fireEvent.click(screen.getByRole("button", { name: /加载更多/ }))
+    await waitFor(() => expect(callbacks.length).toBeGreaterThan(0))
+    act(() =>
+      callbacks[callbacks.length - 1](
+        [{ isIntersecting: true }] as IntersectionObserverEntry[],
+        {} as IntersectionObserver,
+      ),
+    )
 
-    await waitFor(() => expect(screen.getAllByText(/Tool [a-e]/)).toHaveLength(4))
+    await waitFor(() => expect(screen.getByText("Tool c")).toBeInTheDocument())
+    expect(screen.getByText("Tool d")).toBeInTheDocument()
+    expect(screen.getByText("Tool a")).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/tools?ids=c%2Cd",
       expect.objectContaining({ signal: expect.anything() }),

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { cn } from "@/lib/utils"
 
 interface PageStatusProps {
@@ -37,13 +37,7 @@ export function PageStatus({ code, media, title, description, actions, children,
         </EmptyMedia>
         <EmptyHeader className="gap-3">
           <p className="font-data text-xs uppercase tracking-[0.22em] text-muted-foreground">{code}</p>
-          <EmptyTitle
-            role="heading"
-            aria-level={1}
-            className="font-brand text-3xl font-semibold tracking-tight text-balance"
-          >
-            {title}
-          </EmptyTitle>
+          <h1 className="m-0 font-brand text-3xl font-semibold tracking-tight text-balance">{title}</h1>
           <EmptyDescription>{description}</EmptyDescription>
         </EmptyHeader>
         {actions ? <EmptyContent className="gap-3">{actions}</EmptyContent> : null}

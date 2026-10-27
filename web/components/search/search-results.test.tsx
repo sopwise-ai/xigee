@@ -23,7 +23,15 @@ function mockSearch() {
     const url = new URL(String(input), "http://localhost")
     const q = url.searchParams.get("q") ?? ""
     if (q === "对话") {
-      return json({ items: [mockTools[0], mockTools[1]], total: 2, hasMore: false, related: [] })
+      return json({
+        items: [
+          { ...mockTools[0], topicNames: [] },
+          { ...mockTools[1], topicNames: [] },
+        ],
+        total: 2,
+        hasMore: false,
+        related: [],
+      })
     }
     if (q === "代码") {
       return json({ items: [mockTools[4]], total: 1, hasMore: false, related: [] })
@@ -66,6 +74,35 @@ describe("SearchResults", () => {
     expect(screen.getByRole("button", { name: "图像生成" })).toBeInTheDocument()
   })
 
+  it("带服务端首屏结果时直接渲染，不再发起 /api/search 请求", () => {
+    nav.search = "?q=对话"
+    const fetchMock = mockSearch()
+    render(
+      <SearchResults
+        featured={featured}
+        topics={mockTopics}
+        topicCounts={mockTopicCounts}
+        initial={{
+          query: "对话",
+          sort: "relevance",
+          topic: "",
+          pricing: "",
+          featured: false,
+          items: [
+            { ...mockTools[0], topicNames: [] },
+            { ...mockTools[1], topicNames: [] },
+          ],
+          total: 2,
+          related: [],
+        }}
+      />,
+    )
+
+    expect(screen.getByRole("status")).toHaveTextContent("找到 2 个与「对话」相关的结果")
+    expect(document.querySelectorAll("[data-search-result]")).toHaveLength(2)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it("有结果时给出结果计数、排序入口与结果行", async () => {
     nav.search = "?q=对话"
     renderResults()
@@ -81,8 +118,8 @@ describe("SearchResults", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("找到 2 个"))
 
     fireEvent.click(screen.getByRole("button", { name: "排序" }))
-    fireEvent.click(await screen.findByRole("menuitemradio", { name: /最新/ }))
-    expect(new URLSearchParams(window.location.search).get("sort")).toBe("latest")
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: /名称 A-Z/ }))
+    expect(new URLSearchParams(window.location.search).get("sort")).toBe("name")
   })
 
   it("未找到时走无结果页，并给出「也许你想找」/ 换词建议", async () => {

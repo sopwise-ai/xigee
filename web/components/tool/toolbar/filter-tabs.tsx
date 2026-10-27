@@ -72,16 +72,17 @@ export function FilterTabs({ tab, onTabChange, panelId }: FilterTabsProps) {
             key={value}
             type="button"
             role="tab"
+            id={panelId ? `${panelId}-tab-${value}` : undefined}
             aria-selected={active}
             aria-controls={panelId}
             tabIndex={active ? 0 : -1}
             onClick={() => onTabChange(value)}
             className={cn(
-              "flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm sm:px-3 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring",
               active ? "bg-brand/10 font-medium text-brand" : "text-muted-foreground hover:bg-brand/5 hover:text-brand",
             )}
           >
-            <Icon className="size-4 shrink-0" aria-hidden />
+            <Icon className="hidden size-4 shrink-0 sm:block" aria-hidden />
             <span className="whitespace-nowrap">{label}</span>
           </button>
         )

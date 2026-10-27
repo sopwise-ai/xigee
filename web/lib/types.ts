@@ -23,6 +23,8 @@ export interface Topic {
 export interface ToolIndex {
   id: string
   name: string
+  /** 仅离线搜索需要；正常浏览不读取。 */
+  url?: string
   featured?: boolean
   /** `publishedAt ?? createdAt`，用于「最新」排序；空串表示没有日期。 */
   date?: string

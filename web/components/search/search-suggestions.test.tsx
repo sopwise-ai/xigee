@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { render, screen, within } from "@testing-library/react"
 import { SearchSuggestions, suggestionOptionId } from "./search-suggestions"
 import type { SuggestionDoc } from "@/lib/search"
@@ -68,8 +68,21 @@ describe("SearchSuggestions", () => {
     expect(screen.getByText("打开")).toBeInTheDocument()
   })
 
-  it("无建议时不渲染任何弹层（不占 DOM、不遮内容）", () => {
-    const { container } = render(<SearchSuggestions items={[]} query="zzz" activeIndex={-1} listboxId="lb" />)
-    expect(container.firstChild).toBeNull()
+  it("无建议时给出反馈与「查看全部结果」，而不是静默消失", () => {
+    render(<SearchSuggestions items={[]} query="zzz" activeIndex={-1} listboxId="lb" />)
+    expect(screen.getByRole("status")).toHaveTextContent("没有匹配建议")
+    expect(screen.getByRole("button", { name: "查看全部结果" })).toBeInTheDocument()
+  })
+
+  it("建议请求未返回时显示加载态，不误报「没有匹配」", () => {
+    render(<SearchSuggestions items={[]} query="zz" activeIndex={-1} listboxId="lb" settled={false} />)
+    expect(screen.getByRole("status")).toHaveTextContent("正在搜索建议")
+  })
+
+  it("点「查看全部结果」触发回调", () => {
+    const onViewAll = vi.fn()
+    render(<SearchSuggestions items={docs} query="chat" activeIndex={-1} listboxId="lb" onViewAll={onViewAll} />)
+    screen.getByRole("button", { name: "查看全部结果" }).click()
+    expect(onViewAll).toHaveBeenCalledTimes(1)
   })
 })

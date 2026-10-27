@@ -2,7 +2,12 @@ import type { Metadata } from "next"
 import { Suspense } from "react"
 import { getAllTopics, getTopicCounts, getFeaturedTools } from "@/lib/data"
 import { pageShell } from "@/lib/layout"
-import { SearchResults } from "@/components/search/search-results"
+import { SearchResults, type SearchInitial } from "@/components/search/search-results"
+import { SearchPageInput } from "@/components/search/search-page-input"
+import { MAX_SEARCH_QUERY_LENGTH } from "@/lib/search-limits"
+import { isSearchSort, readSearchFacets, type SearchSort } from "@/lib/search-params"
+import { searchTools } from "@/lib/catalog"
+import type { Pricing } from "@/lib/types"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export const metadata: Metadata = {
@@ -42,12 +47,66 @@ function ResultsSkeleton() {
   )
 }
 
-export default function SearchPage() {
+interface SearchPageProps {
+  searchParams: Promise<{
+    q?: string | string[]
+    sort?: string | string[]
+    topic?: string | string[]
+    pricing?: string | string[]
+    featured?: string | string[]
+  }>
+}
+
+/** 读取并裁剪查询串；URL 可能被手工改写，长度上限与 API 保持一致。 */
+function readQuery(value: string | string[] | undefined): string {
+  const raw = Array.isArray(value) ? value[0] : value
+  return (raw ?? "").trim().slice(0, MAX_SEARCH_QUERY_LENGTH)
+}
+
+function readSort(value: string | string[] | undefined): SearchSort {
+  const raw = Array.isArray(value) ? value[0] : value
+  return isSearchSort(raw ?? null) ? (raw as SearchSort) : "relevance"
+}
+
+export default async function SearchPage({ searchParams }: SearchPageProps) {
+  const params = await searchParams
+  const query = readQuery(params.q)
+  const sort = readSort(params.sort)
+  const getParam = (key: "topic" | "pricing" | "featured"): string | null => {
+    const value = params[key]
+    return (Array.isArray(value) ? value[0] : value) ?? null
+  }
+  const facets = readSearchFacets({ get: getParam })
+
+  // 首屏直接算：省掉「HTML → JS → hydrate → /api/search」整条瀑布，结果随 SSR 一起到达。
+  // api 仍保留给「加载更多 / 换排序」，纯客户端导航时复用同一份 catalog。
+  const initial: SearchInitial | undefined = query
+    ? {
+        query,
+        sort,
+        topic: facets.topic,
+        pricing: facets.pricing,
+        featured: facets.featured,
+        ...searchTools({
+          query,
+          sort,
+          page: 1,
+          pageSize: 50,
+          topic: facets.topic || undefined,
+          pricing: (facets.pricing || undefined) as Pricing | undefined,
+          featured: facets.featured,
+        }),
+      }
+    : undefined
+
   return (
     <div className={pageShell("content", "flex flex-col gap-4")}>
       <h1 className="text-2xl font-semibold tracking-tight">搜索</h1>
+      <div className="md:hidden">
+        <SearchPageInput query={query} sort={sort} />
+      </div>
       <Suspense fallback={<ResultsSkeleton />}>
-        <SearchResults featured={featured} topics={topics} topicCounts={topicCounts} />
+        <SearchResults featured={featured} topics={topics} topicCounts={topicCounts} initial={initial} />
       </Suspense>
     </div>
   )

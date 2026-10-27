@@ -25,13 +25,13 @@ export default function Footer() {
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground sm:justify-end">
           <nav aria-label="信息" className="flex items-center gap-3">
-            <Link href="/about" className="transition-colors hover:text-foreground">
+            <Link href="/about" prefetch={false} className="transition-colors hover:text-foreground">
               关于
             </Link>
-            <Link href="/privacy" className="transition-colors hover:text-foreground">
+            <Link href="/privacy" prefetch={false} className="transition-colors hover:text-foreground">
               隐私政策
             </Link>
-            <Link href="/terms" className="transition-colors hover:text-foreground">
+            <Link href="/terms" prefetch={false} className="transition-colors hover:text-foreground">
               服务条款
             </Link>
           </nav>

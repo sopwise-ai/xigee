@@ -11,18 +11,18 @@ export function HeroStatsBar({ stats, className }: { stats: HeroStats; className
   ]
 
   return (
-    <dl className={cn("flex flex-wrap items-center gap-x-8 gap-y-2", className)}>
+    <dl className={cn("flex flex-wrap items-center gap-x-4 gap-y-1.5 sm:gap-x-8 sm:gap-y-2", className)}>
       {items.map(([label, value], i) => (
         <div
           key={label}
           className={cn(
             "flex items-baseline gap-2",
             i > 0 &&
-              "relative pl-8 before:absolute before:left-0 before:top-[0.1em] before:h-[1.1em] before:w-px before:bg-border/80",
+              "relative pl-4 before:absolute before:left-0 sm:pl-8 before:top-[0.1em] before:h-[1.1em] before:w-px before:bg-border/80",
           )}
         >
           <dt className="text-xs tracking-wide text-muted-foreground">{label}</dt>
-          <dd className="order-first font-mono text-xl leading-none font-medium tabular-nums tracking-tight text-foreground">
+          <dd className="order-first font-mono text-lg leading-none font-medium sm:text-xl tabular-nums tracking-tight text-foreground">
             {formatCount(value)}
           </dd>
         </div>

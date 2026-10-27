@@ -96,7 +96,8 @@ function SearchField() {
       .then((response) => (response.ok ? (response.json() as Promise<SuggestionDoc[]>) : []))
       .then((next) => setSuggestions({ query: deferred, items: next }))
       .catch(() => {
-        /* 建议是增强功能：请求失败时静默收起，不影响输入与提交 */
+        /* 建议是增强功能：失败时按「无建议」处理，输入与提交不受影响 */
+        if (!controller.signal.aborted) setSuggestions({ query: deferred, items: [] })
       })
     return () => controller.abort()
   }, [deferred, focused, isSearchPage])
@@ -105,7 +106,13 @@ function SearchField() {
   const items = suggestions.query === draft ? suggestions.items : []
 
   const listboxId = "search-suggestions"
-  const open = focused && !dismissed && items.length > 0
+  const settled = suggestions.query === draft
+  /**
+   * 有响应才开：加载中不弹「正在搜索」空层，避免每个按键闪一下；
+   * 响应为空时也要开，给「没有匹配建议 / 查看全部」的反馈，而不是静默无响应。
+   * 搜索页不弹：结果已经在下方实时更新，再来一份下拉是重复信息。
+   */
+  const open = !isSearchPage && focused && !dismissed && draft.trim().length > 0 && (items.length > 0 || settled)
   const activeIndex = active.query === draft && active.index >= 0 && active.index < items.length ? active.index : -1
 
   const moveActive = (delta: number) => {
@@ -173,6 +180,9 @@ function SearchField() {
   /** 提交搜索：搜索页原地定格 URL（不等防抖、不发请求），其它页才做一次客户端跳转。 */
   const submitSearch = () => {
     const trimmed = inputRef.current?.value.trim() ?? ""
+    // 提交即收起：客户端跳转不会重挂主区顶栏，不显式关闭会把建议浮层带进结果页。
+    setFocused(false)
+    setDismissed(true)
     if (isSearchPage) {
       writeSearchQuery(trimmed, pathname, window.location.search)
       return
@@ -315,7 +325,16 @@ function SearchField() {
           )}
         </InputGroupAddon>
       </InputGroup>
-      {open && <SearchSuggestions items={items} query={draft} activeIndex={activeIndex} listboxId={listboxId} />}
+      {open && (
+        <SearchSuggestions
+          items={items}
+          query={draft}
+          activeIndex={activeIndex}
+          listboxId={listboxId}
+          settled={settled}
+          onViewAll={submitSearch}
+        />
+      )}
     </form>
   )
 }
@@ -331,13 +350,14 @@ function resolveCrumbs(pathname: string, topics: readonly Topic[]): Crumb[] {
     const name = topics.find((c) => c.id === id)?.name
     return name ? [{ label: "全部工具", href: "/" }, { label: name }] : [{ label: "全部工具", href: "/" }]
   }
+  if (pathname === "/") return [{ label: "全部工具" }]
   if (pathname === "/search") return [{ label: "搜索" }]
   if (pathname === "/history") return [{ label: "历史记录" }]
   if (pathname === "/settings") return [{ label: "设置" }]
   if (pathname === "/about") return [{ label: "关于" }]
   if (pathname === "/privacy") return [{ label: "隐私政策" }]
   if (pathname === "/terms") return [{ label: "服务条款" }]
-  return [{ label: "全部工具" }]
+  return [{ label: "页面未找到" }]
 }
 
 interface MainHeaderProps {

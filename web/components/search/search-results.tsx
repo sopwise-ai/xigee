@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
-import { Sparkles } from "lucide-react"
+import { CircleDollarSign, Sparkles, Star, Tag, X } from "lucide-react"
 import { FilterSelect } from "@/components/ui/filter-select"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -12,6 +12,7 @@ import { SearchNoResults } from "@/components/search/search-no-results"
 import { SearchResultRow } from "@/components/search/search-result-row"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { formatCount } from "@/lib/format"
+import { searchOffline } from "@/lib/offline-search"
 import {
   addRecentSearch,
   clearRecentSearches,
@@ -20,14 +21,33 @@ import {
   subscribeRecentSearches,
 } from "@/lib/recent-searches"
 import { SEARCH_FOCUS_RESULTS_EVENT, SEARCH_RESULT_SELECTOR, type SearchDoc } from "@/lib/search"
-import { readSearchState, SEARCH_SORT_OPTIONS, type SearchSort } from "@/lib/search-params"
+import {
+  readSearchFacets,
+  readSearchState,
+  SEARCH_PRICING_OPTIONS,
+  SEARCH_SORT_OPTIONS,
+  type SearchSort,
+} from "@/lib/search-params"
 import { writeSearchParams } from "@/lib/url"
 import type { Topic, Tool } from "@/lib/types"
+
+/** 首屏由服务端算好带下来；缺省时退回原来的「hydration 后请求」路径（测试/兼容）。 */
+export interface SearchInitial {
+  query: string
+  sort: SearchSort
+  topic: string
+  pricing: string
+  featured: boolean
+  items: SearchDoc[]
+  total: number
+  related: SearchDoc[]
+}
 
 interface SearchResultsProps {
   featured: readonly Tool[]
   topics: readonly Topic[]
   topicCounts: Record<string, number>
+  initial?: SearchInitial
 }
 
 interface SearchResponse {
@@ -72,28 +92,41 @@ function shuffleWithSeed<T>(items: readonly T[], seed: number): T[] {
  * 搜索结果：请求由 `/api/search` 服务端完成，客户端不再下载全量工具、也不再本地建 Fuse 索引。
  * 空查询仍走着陆态；无结果时用服务端返回的「也许相关」+ 精选推荐兜底。
  */
-export function SearchResults({ featured, topics, topicCounts }: SearchResultsProps) {
+export function SearchResults({ featured, topics, topicCounts, initial }: SearchResultsProps) {
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const { query, sort } = readSearchState(searchParams)
+  const facets = readSearchFacets(searchParams)
+  const facetKey = `${facets.topic}|${facets.pricing}|${facets.featured}`
   const trimmedQuery = query.trim()
 
   const [retryToken, setRetryToken] = useState(0)
-  const requestKey = `${trimmedQuery}|${sort}|${retryToken}`
+  const requestKey = `${trimmedQuery}|${sort}|${facetKey}|${retryToken}`
+  const initialKey = initial
+    ? `${initial.query}|${initial.sort}|${initial.topic}|${initial.pricing}|${initial.featured}|0`
+    : ""
+  /** 首屏已由 server 直出：跳过同参数的第一次客户端请求，换词/重试仍走 API。 */
+  const skipInitialFetch = useRef(Boolean(initial))
   const [result, setResult] = useState<{
     key: string
     query: string
     items: SearchDoc[]
     total: number
     related: SearchDoc[]
-  }>({ key: "", query: "", items: [], total: 0, related: [] })
+  }>(() =>
+    initial
+      ? { key: initialKey, query: initial.query, items: initial.items, total: initial.total, related: initial.related }
+      : { key: "", query: "", items: [], total: 0, related: [] },
+  )
   const [errorKey, setErrorKey] = useState("")
+  const [offlineMode, setOfflineMode] = useState(false)
   const [loadingMoreState, setLoadingMoreState] = useState<{ key: string; value: boolean }>({
     key: "",
     value: false,
   })
   const requestIdRef = useRef(0)
   const loadMoreControllerRef = useRef<AbortController | null>(null)
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null)
 
   const topicNames = useMemo(
     () => Object.fromEntries(topics.map((c) => [c.id, c.name])) as Record<string, string>,
@@ -111,17 +144,25 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
 
   useEffect(() => {
     if (!trimmedQuery) return
+    if (skipInitialFetch.current && requestKey === initialKey) {
+      skipInitialFetch.current = false
+      return
+    }
     loadMoreControllerRef.current?.abort()
 
     const requestId = ++requestIdRef.current
     const controller = new AbortController()
     const key = requestKey
+    setOfflineMode(false)
     const params = new URLSearchParams({
       q: trimmedQuery,
       sort,
       page: "1",
       pageSize: String(PAGE_SIZE),
     })
+    if (facets.topic) params.set("topic", facets.topic)
+    if (facets.pricing) params.set("pricing", facets.pricing)
+    if (facets.featured) params.set("featured", "1")
 
     fetch(`/api/search?${params.toString()}`, { signal: controller.signal })
       .then((response) => {
@@ -130,17 +171,30 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
       })
       .then((data) => {
         if (requestId !== requestIdRef.current) return
+        setOfflineMode(false)
         setResult({ key, query: trimmedQuery, items: data.items, total: data.total, related: data.related })
       })
-      .catch((reason: unknown) => {
+      .catch(async (reason: unknown) => {
         if (controller.signal.aborted) return
         if (requestId !== requestIdRef.current) return
+        // 断网/接口不可用时退回本地名称搜索：索引由 SW 缓存，至少还能找到看过的工具。
+        try {
+          const local = await searchOffline(trimmedQuery)
+          if (requestId !== requestIdRef.current) return
+          if (local.total > 0) {
+            setOfflineMode(true)
+            setResult({ key, query: trimmedQuery, items: local.items, total: local.total, related: [] })
+            return
+          }
+        } catch {
+          /* 本地索引也没缓存：继续走错误态 */
+        }
         setErrorKey(key)
         console.error("[search] 请求失败", reason)
       })
 
     return () => controller.abort()
-  }, [requestKey, trimmedQuery, sort])
+  }, [facetKey, facets.featured, facets.pricing, facets.topic, initialKey, requestKey, trimmedQuery, sort])
 
   useEffect(() => () => loadMoreControllerRef.current?.abort(), [])
 
@@ -158,6 +212,9 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
       page: String(nextPage),
       pageSize: String(PAGE_SIZE),
     })
+    if (facets.topic) params.set("topic", facets.topic)
+    if (facets.pricing) params.set("pricing", facets.pricing)
+    if (facets.featured) params.set("featured", "1")
 
     setLoadingMoreState({ key, value: true })
     fetch(`/api/search?${params.toString()}`, { signal: controller.signal })
@@ -179,7 +236,22 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
           prev.key === key && loadMoreControllerRef.current === controller ? { key, value: false } : prev,
         )
       })
-  }, [items.length, loadingMore, requestKey, sort, total, trimmedQuery])
+  }, [facets.featured, facets.pricing, facets.topic, items.length, loadingMore, requestKey, sort, total, trimmedQuery])
+
+  // 搜索列表同样走滚动加载：哨兵进入视口前 500px 就取下一页，不要求用户点按钮。
+  useEffect(() => {
+    if (loading || loadingMore || items.length >= total) return
+    const node = loadMoreSentinelRef.current
+    if (!node || typeof IntersectionObserver === "undefined") return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMore()
+      },
+      { rootMargin: "500px 0px" },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [items.length, loading, loadingMore, loadMore, total])
 
   // 不同搜索词 → 不同推荐；同 URL 稳定。种子两端一致，故无重排闪烁。
   const displayedFeatured = useMemo(() => shuffleWithSeed(featured, hashString(trimmedQuery)), [featured, trimmedQuery])
@@ -209,6 +281,16 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
     [patch],
   )
   const handleClearRecent = useCallback(() => clearRecentSearches(), [])
+  const setFacet = useCallback(
+    (next: Partial<{ topic: string; pricing: string; featured: boolean }>) => {
+      patch({
+        topic: next.topic !== undefined ? next.topic || null : facets.topic || null,
+        pricing: next.pricing !== undefined ? next.pricing || null : facets.pricing || null,
+        featured: next.featured !== undefined ? (next.featured ? "1" : null) : facets.featured ? "1" : null,
+      })
+    },
+    [facets.featured, facets.pricing, facets.topic, patch],
+  )
 
   // 顶栏搜索框按 ↓ → 焦点进入第一条结果（两者无共同祖先，用全局事件解耦）
   useEffect(() => {
@@ -291,6 +373,11 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
 
   return (
     <div className="flex flex-col gap-3" aria-busy={loading}>
+      {offlineMode && (
+        <p role="status" className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+          离线模式：仅按名称匹配缓存索引。
+        </p>
+      )}
       <div className="flex items-center justify-between gap-3">
         {/* 中文句子里的元素切分不要留空格：`{" "}` 或行内尾随空格会渲染成「个与 「对话」 相关」 */}
         <p role="status" aria-live="polite" className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
@@ -315,6 +402,43 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
         />
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <FilterSelect
+          label="按主题筛选"
+          icon={Tag}
+          value={facets.topic}
+          options={[
+            { value: "", label: "全部主题" },
+            ...topics.map((topic) => ({ value: topic.id, label: topic.name })),
+          ]}
+          onChange={(value) => setFacet({ topic: value })}
+          active={Boolean(facets.topic)}
+        />
+        <FilterSelect
+          label="按价格筛选"
+          icon={CircleDollarSign}
+          value={facets.pricing}
+          options={SEARCH_PRICING_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+          onChange={(value) => setFacet({ pricing: value })}
+          active={Boolean(facets.pricing)}
+        />
+        <Button
+          variant="outline"
+          aria-pressed={facets.featured}
+          onClick={() => setFacet({ featured: !facets.featured })}
+          className={facets.featured ? "border-brand/40 bg-brand/10 text-brand" : "text-muted-foreground"}
+        >
+          <Star aria-hidden />
+          只看精选
+        </Button>
+        {(facets.topic || facets.pricing || facets.featured) && (
+          <Button variant="ghost" onClick={() => patch({ topic: null, pricing: null, featured: null })}>
+            <X aria-hidden />
+            清除筛选
+          </Button>
+        )}
+      </div>
+
       <div onKeyDown={handleListKeyDown} className="overflow-hidden rounded-lg border bg-card">
         {items.map((tool, i) => (
           <SearchResultRow
@@ -328,13 +452,24 @@ export function SearchResults({ featured, topics, topicCounts }: SearchResultsPr
       </div>
 
       {!loading && items.length < total && (
-        <div className="flex flex-col items-center gap-2 pt-1">
-          <p className="font-data text-xs text-muted-foreground">
-            已显示 {items.length} / {formatCount(total)}
-          </p>
-          <Button variant="outline" disabled={loadingMore} onClick={loadMore}>
-            {loadingMore ? "加载中…" : `加载更多（剩余 ${formatCount(total - items.length)}）`}
-          </Button>
+        <div
+          ref={loadMoreSentinelRef}
+          aria-live="polite"
+          className="flex flex-col items-center gap-2 border-t border-border pt-3 font-data text-xs text-muted-foreground"
+        >
+          {loadingMore ? (
+            <>
+              <span
+                className="size-4 animate-spin rounded-full border-2 border-border border-t-foreground/70"
+                aria-hidden
+              />
+              <span>加载中…</span>
+            </>
+          ) : (
+            <span>
+              已显示 {formatCount(items.length)} / {formatCount(total)}，继续向下滚动
+            </span>
+          )}
         </div>
       )}
 

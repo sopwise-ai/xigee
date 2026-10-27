@@ -128,6 +128,18 @@ describe("MainHeader 搜索", () => {
     expect(nav.push).not.toHaveBeenCalled()
   })
 
+  it("回车提交后立即收起建议浮层（回归：进 /search 后浮层仍遮挡结果与排序）", async () => {
+    renderHeader()
+    const input = typeInto("chat")
+    expect(await screen.findByRole("listbox")).toBeInTheDocument()
+
+    fireEvent.submit(screen.getByRole("search"))
+
+    expect(screen.queryByRole("listbox")).toBeNull()
+    expect(input).toHaveAttribute("aria-expanded", "false")
+    expect(nav.push).toHaveBeenCalledWith("/search?q=chat")
+  })
+
   it("其它页面回车才做一次客户端跳转，并预取 /search", () => {
     renderHeader()
 

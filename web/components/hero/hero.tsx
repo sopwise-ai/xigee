@@ -1,64 +1,60 @@
 import Link from "next/link"
-import { ArrowRight, Sparkles } from "lucide-react"
+import { ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
-import { HeroBackdrop, HeroEyebrow } from "@/components/hero/hero-primitives"
-import { HeroStatsBar } from "@/components/hero/hero-stats-bar"
 import { getStats } from "@/lib/data"
 
 /**
- * 首页 Hero · 编辑精选（A 方案）
+ * 首页 Hero · 编辑筛选定位
  *
- * 排版主导的克制高级感：品牌字体大标题 + 一句价值主张 + 双 CTA + 实时统计，
- * 靠留白、细网格与顶部微光建立纵深，而非重卡片。紧凑（≈313px），不挤占下方列表。
- * Server Component，纯 CSS，无客户端 JS → 零 FOUC / 零 CLS。
+ * 一句话主张：不是又一个 AI 榜单，而是「替你筛过」的目录。
+ * 版式保持单栏：标签 → 大标题 → 证据 → 双 CTA → 脚注；没有卡片、网格和分隔线。
  */
 export function Hero() {
   const stats = getStats()
 
   return (
-    <section
-      id="hero"
-      aria-labelledby="hero-title"
-      className="relative overflow-hidden rounded-2xl border border-border/70 bg-gradient-to-b from-secondary/50 to-background px-6 py-7 sm:px-9 sm:py-9"
-    >
-      <HeroBackdrop align="left" />
-
-      <div className="hero-rise relative max-w-2xl">
-        <HeroEyebrow>Curated AI Directory</HeroEyebrow>
-
-        {/* 视觉大标题即页面 h1（原来 h1 藏在 sr-only、视觉标题用 h2，屏幕阅读器与视觉各说一套）；
-            工具卡片相应为 h2，层级 h1 → h2 连续不跨级 */}
-        <h1
-          id="hero-title"
-          className="mt-3.5 font-brand text-[1.875rem] font-semibold leading-[1.05] tracking-[-0.03em] text-balance sm:text-[2.625rem]"
-        >
-          <span className="bg-gradient-to-r from-foreground via-foreground/90 to-foreground/65 bg-clip-text text-transparent">
-            发现值得用的 AI 工具
-          </span>
-        </h1>
-
-        <p className="mt-3 max-w-xl text-sm leading-[1.65] text-muted-foreground sm:text-[0.9375rem]">
-          精选值得用的 AI 工具，每一款都经过人工筛选——按主题浏览，或直接搜索。
+    <section id="hero" aria-labelledby="hero-title" className="bg-background px-4 pb-8 pt-10 sm:pb-10 sm:pt-12">
+      <div className="hero-rise mx-auto flex max-w-4xl flex-col items-center text-center">
+        <p className="inline-flex items-center gap-2 rounded-full border border-border/80 bg-background px-3.5 py-1.5 text-xs text-muted-foreground shadow-sm">
+          <span className="size-1.5 rounded-full bg-foreground" aria-hidden />
+          人工筛选 · 每周复核
         </p>
 
-        <div className="mt-5 flex flex-wrap items-center gap-2.5">
+        <h1
+          id="hero-title"
+          className="mt-6 text-[2.25rem] font-semibold leading-[1.1] tracking-[-0.035em] text-balance sm:text-[3.5rem] sm:leading-[1.04] lg:text-[4rem]"
+        >
+          AI 工具，<span className="block sm:inline">替你筛过了。</span>
+        </h1>
+
+        <p className="mt-4 max-w-2xl text-[0.9375rem] leading-[1.65] text-muted-foreground sm:text-base">
+          {stats.tools.toLocaleString("zh-CN")} 款在库，
+          <strong className="font-semibold text-foreground">{stats.featured} 款精选</strong>。
+          <span className="block sm:inline">按主题浏览，点开就是官网。</span>
+        </p>
+
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
           <Button
             size="lg"
-            className="shadow-sm transition-shadow hover:shadow-md"
-            render={<Link href="/?tab=all#tool-browser" />}
+            className="h-10 px-5 text-sm shadow-sm transition-shadow hover:shadow-md"
+            render={<Link href="/?tab=featured#tool-browser" prefetch={false} />}
           >
-            浏览全部工具
+            先看 {stats.featured} 款精选
             <ArrowRight data-icon="inline-end" />
           </Button>
-          <Button variant="outline" size="lg" render={<Link href="/?tab=featured#tool-browser" />}>
-            <Sparkles data-icon="inline-start" className="text-muted-foreground" />
-            探索精选
+          <Button
+            variant="outline"
+            size="lg"
+            className="h-10 bg-background px-5 text-sm"
+            render={<Link href="/?tab=all#tool-browser" prefetch={false} />}
+          >
+            浏览全部工具
           </Button>
         </div>
 
-        <Separator className="mt-7" />
-        <HeroStatsBar stats={stats} className="pt-4" />
+        <p className="mt-3 font-data text-[0.6875rem] tracking-wide text-muted-foreground">
+          {stats.topics} 个主题 · 无需注册 · 点开直达官网
+        </p>
       </div>
     </section>
   )

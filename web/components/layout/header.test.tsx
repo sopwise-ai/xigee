@@ -31,9 +31,9 @@ describe("移动端 Header 搜索快捷键", () => {
   it("移动端视口按 / 应展开搜索框并聚焦", () => {
     installViewport(false)
     render(<Header className="md:hidden" />)
-    expect(screen.queryByRole("searchbox")).toBeNull()
+    expect(screen.queryByRole("combobox", { name: "搜索 AI 工具" })).toBeNull()
     fireEvent.keyDown(window, { key: "/" })
-    const input = screen.getByRole("searchbox")
+    const input = screen.getByRole("combobox", { name: "搜索 AI 工具" })
     expect(input).toBeTruthy()
     expect(document.activeElement).toBe(input)
   })
@@ -42,7 +42,7 @@ describe("移动端 Header 搜索快捷键", () => {
     installViewport(true)
     render(<Header className="md:hidden" />)
     fireEvent.keyDown(window, { key: "/" })
-    expect(screen.queryByRole("searchbox")).toBeNull()
+    expect(screen.queryByRole("combobox", { name: "搜索 AI 工具" })).toBeNull()
   })
 
   it("输入框中按 / 不应触发（避免吞键）", () => {
@@ -50,7 +50,7 @@ describe("移动端 Header 搜索快捷键", () => {
     render(<Header className="md:hidden" />)
     const btn = screen.getByRole("button", { name: "搜索工具" })
     fireEvent.click(btn)
-    const input = screen.getByRole("searchbox")
+    const input = screen.getByRole("combobox", { name: "搜索 AI 工具" })
     input.focus()
     fireEvent.keyDown(input, { key: "/" })
     // 输入框仍存在（未重复触发），且焦点仍在输入框

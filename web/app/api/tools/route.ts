@@ -1,3 +1,5 @@
+export const preferredRegion = "sin1"
+
 import { NextResponse } from "next/server"
 import { getToolsByIds } from "@/lib/catalog"
 import { MAX_TOOL_PAGE_SIZE } from "@/lib/tool"

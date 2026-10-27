@@ -37,6 +37,7 @@ export function ToolCard({ tool, topicLabel, topicIcon }: ToolCardProps) {
             className="mt-1 size-4 shrink-0 text-muted-foreground/50 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-foreground"
             aria-hidden
           />
+          <span className="sr-only">（在新标签页打开官网）</span>
         </div>
         {/* 固定两行：不足两行也保留高度，保证网格卡片等高对齐 */}
         <p className="mt-1.5 line-clamp-2 min-h-[2.75rem] text-sm leading-relaxed text-muted-foreground">
