@@ -7,6 +7,7 @@ import {
   useId,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -185,6 +186,7 @@ export function ToolBrowser({
     key: `${tab}|${resolvedSort}`,
     count: Math.min(MAX_TOOL_PAGE_SIZE, Math.max(1, pageSize)),
   }))
+  const sentinelRef = useRef<HTMLDivElement>(null)
   const [retryToken, setRetryToken] = useState(0)
   const [errorKey, setErrorKey] = useState("")
   const [unavailableIds, setUnavailableIds] = useState<ReadonlySet<string>>(() => new Set())
@@ -221,11 +223,10 @@ export function ToolBrowser({
   )
   const hasMissing = missingKey.length > 0
   const fetchKey = hasMissing ? `${missingKey}|${retryToken}` : ""
-  const loading = hasMissing && errorKey !== fetchKey
   const loadError = hasMissing && errorKey === fetchKey
 
   // 只取当前页缺失的完整字段；排序/筛选仍由轻量索引在客户端完成，交互不退化。
-  // loading/error 都由 fetchKey 派生，effect 内不直接 setState，避免级联渲染。
+  // 错误态由 fetchKey 派生，effect 内不直接 setState，避免级联渲染。
   useEffect(() => {
     if (!missingKey) return
     const controller = new AbortController()
@@ -269,6 +270,22 @@ export function ToolBrowser({
 
   // 主题 id→名称/图标 查找表（O(1)/次）；缺 topics 时返回空
   const topicMap = useMemo(() => new Map((topics ?? []).map((c) => [c.id, c])), [topics])
+  // 滚动加载：距底部 600px 时追加下一批；详情还在补时不叠请求。
+  useEffect(() => {
+    const node = sentinelRef.current
+    if (!node || typeof IntersectionObserver === "undefined") return
+    if (hasMissing || visible.length >= filtered.length) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return
+        setVisibleState({ key: listKey, count: Math.min(visibleCount + perPage, filtered.length) })
+      },
+      { rootMargin: "600px 0px" },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [filtered.length, hasMissing, listKey, perPage, visible.length, visibleCount])
+
   const topicOf = useCallback(
     (tool: Tool) => {
       const id = tool.topics[0]
@@ -354,23 +371,27 @@ export function ToolBrowser({
             )}
 
             {filtered.length > perPage && (
-              <div className="flex flex-col items-center gap-2 pt-2">
-                <p aria-live="polite" className="font-data text-xs text-muted-foreground">
-                  已显示 {visibleTools.length} / {filtered.length}
-                </p>
-                {visible.length < filtered.length && (
-                  <Button
-                    variant="outline"
-                    disabled={loading || hasMissing}
-                    onClick={() =>
-                      setVisibleState({
-                        key: listKey,
-                        count: Math.min(visibleCount + perPage, filtered.length),
-                      })
-                    }
-                  >
-                    {loading ? "加载中…" : `加载更多（剩余 ${filtered.length - visible.length}）`}
-                  </Button>
+              <div
+                ref={sentinelRef}
+                aria-live="polite"
+                className="flex flex-col items-center gap-2 border-t border-border pt-4 font-data text-xs text-muted-foreground"
+              >
+                {visible.length < filtered.length ? (
+                  hasMissing ? (
+                    <>
+                      <span
+                        className="size-5 animate-spin rounded-full border-2 border-border border-t-foreground/70"
+                        aria-hidden
+                      />
+                      <span>加载中…</span>
+                    </>
+                  ) : (
+                    <span>
+                      已显示 {visibleTools.length} / {filtered.length}，继续向下滚动
+                    </span>
+                  )
+                ) : (
+                  <span>已显示全部 {filtered.length} 个工具</span>
                 )}
               </div>
             )}
