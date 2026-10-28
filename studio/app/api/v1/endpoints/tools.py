@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import get_settings
 from app.core.deps import DbSession
 from app.core.security import require_write
 from app.models import (
@@ -27,6 +28,7 @@ from app.models import (
     Topic,
 )
 from app.schemas.models import MAX_URL_LENGTH, ToolCreate, ToolResponse, ToolUpdate
+from app.scoring.aggregate import recompute_score
 from app.utils.db import check_unique, drop_none, published_tool_counts
 from app.utils.url import InvalidURLError, normalize_url, url_hash_normalized
 
@@ -360,7 +362,7 @@ async def update_tool(tool_id: int, data: ToolUpdate, db: DbSession) -> Tool:
     # 其余 None 一律忽略——把 None 写进 NOT NULL 的列只会换来一个 500
     update_data = drop_none(
         data.model_dump(exclude_unset=True),
-        keep_none=("description", "last_access_check_at", "review_score", "reviewed_by"),
+        keep_none=("description", "last_access_check_at", "review_score", "reviewed_by", "authority_override"),
     )
 
     if "slug" in update_data and update_data["slug"] != tool.slug:
@@ -394,7 +396,7 @@ async def update_tool(tool_id: int, data: ToolUpdate, db: DbSession) -> Tool:
             tool.published_at = await db.scalar(select(func.current_date()))
 
     for key, value in update_data.items():
-        if key not in ("topic_ids", "primary_topic_id", "review_score", "reviewed_by"):
+        if key not in ("topic_ids", "primary_topic_id", "review_score", "reviewed_by", "authority_override"):
             setattr(tool, key, value)
 
     # 人工复核:review_score 是唯一的结论字段,reviewed_at/by 由它驱动,不允许单独漂移。
@@ -415,6 +417,28 @@ async def update_tool(tool_id: int, data: ToolUpdate, db: DbSession) -> Tool:
                 tool.reviewed_by = update_data["reviewed_by"]
     elif reviewed_by_sent and tool.review_score is not None:
         tool.reviewed_by = update_data["reviewed_by"]
+
+    # 人工覆盖权威度:改完立刻用 breakdown 里的 quality 快照重算分数,不调模型。
+    # 这是"人改权重马上能看到排名变化"的关键 —— 否则每次调权重都要等一轮批处理。
+    # 没有 breakdown(还没评过)时跳过:ai_score 仍是 0,下一轮评分会给出正确结果。
+    if "authority_override" in update_data:
+        tool.authority_override = update_data["authority_override"]
+        effective = tool.authority_override if tool.authority_override is not None else tool.ai_authority
+        if (
+            recomputed := recompute_score(
+                tool.ai_score_breakdown,
+                effective,
+                default_authority_weight=get_settings().scoring_authority_weight,
+            )
+        ) is not None:
+            tool.ai_score = recomputed
+            # breakdown 里的 effective 必须跟着改,否则快照会与 ai_score 自相矛盾。
+            # 整份重新赋值(而不是原地改)是为了让 SQLAlchemy 的 JSON 列检测到变更。
+            snapshot = dict(tool.ai_score_breakdown or {})
+            authority = dict(snapshot.get("authority") or {})
+            authority["effective"] = effective
+            snapshot["authority"] = authority
+            tool.ai_score_breakdown = snapshot
 
     if "topic_ids" in update_data or "primary_topic_id" in update_data:
         new_primary = update_data.get("primary_topic_id")

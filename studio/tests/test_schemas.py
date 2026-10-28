@@ -314,6 +314,14 @@ def test_topic_sort_order_rejects_negative():
         TopicCreate(slug="topic", name="主题", sort_order=-1)
 
 
+def test_tool_authority_override_rejects_out_of_range():
+    """权威度与 ai_authority 同一把尺子(0~9),越界必须 422。"""
+    with pytest.raises(ValidationError):
+        ToolUpdate(authority_override=-1)
+    with pytest.raises(ValidationError):
+        ToolUpdate(authority_override=10)
+
+
 def test_tool_review_score_rejects_out_of_range():
     """review_score 与 ai_score 同一把尺子(0~1000),越界必须 422。"""
     with pytest.raises(ValidationError):

@@ -26,9 +26,12 @@
 
 6. 评分 (/std-score)
    → python -m app.scoring --all --apply-topics
-   → 闭集分类(主题只能从 xg_topic 里选) + 六维评分 → ai_score (0~1000)
+   → 闭集分类(主题只能从 xg_topic 里选) + 六维评分 + 权威度 0~9 → ai_score (0~1000)
+   → ai_score = (1-γ)·quality + γ·authority/9，γ 由 SCORING_AUTHORITY_WEIGHT 控制
    → ai_score 是导出/列表的唯一排序键；--dry-run 可先看效果
-   → 人工复核写 review_score (NULL=未复核)：它不参与排序，只做 few-shot 校准
+   → 人工复核写 review_score (NULL=未复核)：不参与排序，只做 few-shot 校准
+   → 人工可用 --authority 0-9 覆盖权威度，服务端会立即重算 ai_score(不调模型)
+   → 重算触发：--changed(内容变了) / --stale-days(默认 90 天) / --outdated-version(口径变了)
 
 7. 导出 (/std-export)
    → 仅 status=published 且存在 active 链接的工具导出
@@ -72,6 +75,7 @@
 - `published_at` 仅在首次 status→published 时写入，之后不变
 - 导出仅包含 status=published **且存在 status=active 链接**的工具
 - 工具排序键是 `ai_score DESC → published_at DESC → id ASC`（`ai_score` 由 `python -m app.scoring` 写入，0~1000）；`sort_order` 只剩主题/关联/链接三处（人工编排），工具的 `sort_order` 已删除
+- `ai_authority` 是 AI 判断的行业权威度（0~9），`authority_override` 是人工覆盖；两者都不是"资料完整度"的分数
 - 人工复核 `review_score`（0~1000，NULL=未复核）**不参与排序**，只作为评分管线的 few-shot 校准锚点；改 rubric/权重/模型要递增 `RUBRIC_VERSION` 并重跑
 - 导出投影细节: `topics[0]` 即主主题（`is_primary` → `sort_order` → `topic_id` 排序）；工具的 `url` 取 `is_primary=1 且 active` 的链接，取不到则回退首个 active 链接，其余 active 链接进 `links[]`（按 `sort_order DESC, id ASC`）；工具无有效主题归属时 `topics` 为 `["misc"]`，`misc` 主题不存在时导出端会合成一条
 - `description` 为 NULL 时导出物**省略该键**（不是输出 null）；`lastUpdatedAt` 取审计列 `updated_at`，恒存在

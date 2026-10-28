@@ -55,16 +55,33 @@ class Settings(BaseSettings):
     # ── AI 评分管线(app/scoring,离线跑;服务进程本身不调用模型) ──────────────
     # 刻意不进服务启动校验:没有 key 也要能正常起服务、跑测试。真正需要它的是
     # `python -m app.scoring`,由那边在开跑前检查并给出可读报错。
-    # 走 OpenAI 兼容协议(DeepSeek / OpenAI / 自建 vLLM 都适用)。
-    llm_base_url: str = "https://api.deepseek.com/v1"
+    #
+    # 调用方式:DeepSeek 的 Responses API(不是老的 /chat/completions)。
+    # 模型名必须用 `deepseek-flash`:旧的 deepseek-chat / deepseek-reasoner 已在
+    # 2026-07-24 下线,写旧名会直接 404。base_url 官方写法不带 /v1。
+    llm_base_url: str = "https://api.deepseek.com"
     llm_api_key: str = ""
-    llm_model: str = "deepseek-chat"
-    llm_timeout: float = Field(60.0, gt=0)
-    llm_temperature: float = Field(0.2, ge=0, le=2)
+    llm_model: str = "deepseek-flash"
+    # 带单位后缀:同一个"超时"在别处是秒还是毫秒不该靠猜
+    llm_timeout_seconds: float = Field(60.0, gt=0)
+    llm_max_retries: int = Field(2, ge=0, le=5)
+    llm_max_output_tokens: int = Field(4000, ge=256)
+    # 思考模式默认开启(DeepSeek 侧默认 effort=high)。评分是批处理,low 更省钱也够用;
+    # 注意:思考模式下 temperature 被忽略,所以本配置里【没有】temperature。
+    llm_reasoning_effort: Literal["low", "high", "max"] = "low"
+    # json_schema: 解码层就约束成我们定义的 JSON Schema(首选);
+    # json_object: 只保证合法 JSON,字段靠 prompt + Pydantic 兜底(provider 不支持 schema 时降级)
+    llm_structured_output: Literal["json_schema", "json_object"] = "json_schema"
+
     # 单个工具采样几次。N>1 是为了拿"采样一致率"当置信度,并给维度分取中位数;
     # 调到 1 会退化成单次裸分(不推荐,见 app/scoring/aggregate.py 的说明)。
     scoring_samples: int = Field(3, ge=1, le=9)
     scoring_concurrency: int = Field(4, ge=1, le=32)
+    # 权威度在最终分里的占比:final = (1-gamma)·quality + gamma·authority。
+    # 改这个值会让 ai_score_version 变化,旧分数要靠 --outdated-version 重算。
+    scoring_authority_weight: float = Field(0.50, ge=0, le=1)
+    # 超过这么多天的分数视为过期(--stale-days 的默认值)
+    scoring_stale_days: int = Field(90, ge=1)
 
     model_config = SettingsConfigDict(
         env_file=str(_STUDIO_ROOT / f".env.{os.getenv('APP_ENV', 'dev')}"),

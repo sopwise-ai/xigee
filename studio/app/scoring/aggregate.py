@@ -1,6 +1,6 @@
 """把"多次采样的维度分"聚合成一个可排序的 0~1000 分。
 
-这不是拍脑袋的加权平均,而是三层各自有出处的标准做法:
+这不是拍脑袋的加权平均,而是四层各自有出处的标准做法:
 
 1. **归一化**:维度分是 1~5 的次序值,量纲一致但幅度被压缩,先线性映射到 0~1。
 2. **加权**:权重来自 rubric(AHP 式的产品判断,不是等权 —— 等权会让"创新度"和
@@ -10,19 +10,25 @@
    v 是"证据条数",m 是先验强度。作用只有一个:**证据少的工具不要靠运气冲到前排**。
    没有它,一个只有 tagline、没有描述/标签/主题/第二个链接的工具,会完全由 LLM
    对"信息缺失"的随机反应决定名次。
+4. **权威度合成**:`(1-gamma)·quality + gamma·authority/9`。quality 回答"它好不好",
+   authority 回答"它重不重要";两根轴分开,资料完整度只影响前者的收敛速度,
+   不参与后者的判断。gamma 由 SCORING_AUTHORITY_WEIGHT 控制。
 
 最终 0~1000 只是展示尺度,单调映射,不改变任何排序关系。真正决定名次的是
-`shrunk`;想换尺度不需要重算,改 to_score 的乘数即可。
+`combine(quality, authority)` 的结果;想换尺度不需要重算,改 to_score 的乘数即可。
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from statistics import median
+from typing import Any
 
 from app.scoring.rubric import (
     DIMENSION_KEYS,
+    MAX_AUTHORITY,
     MAX_DIMENSION_SCORE,
+    MIN_AUTHORITY,
     MIN_DIMENSION_SCORE,
     WEIGHTS,
 )
@@ -34,6 +40,10 @@ SHRINKAGE_M = 2.0
 
 # 没有任何历史分数时的先验(0.5 即"中位",不奖励也不惩罚)
 DEFAULT_PRIOR = 0.5
+
+# 权威度在最终分里的默认占比。可被 SCORING_AUTHORITY_WEIGHT 覆盖;
+# 覆盖后 ai_score_version 会变,旧分数要靠 --outdated-version 才会重算。
+DEFAULT_AUTHORITY_WEIGHT = 0.50
 
 MAX_AI_SCORE = 1000
 
@@ -146,6 +156,59 @@ def to_score(value: float) -> int:
     clamped = min(1.0, max(0.0, value))
     # 加 1e-9 抵消二进制浮点在 .5 边界上的抖动(0.5005*1000 = 500.49999…)
     return round(clamped * MAX_AI_SCORE + 1e-9)
+
+
+def authority_ratio(value: int) -> float:
+    """权威度 0~9 → 0~1。
+
+    超界直接报错而不是 clamp:0~9 是 AI 输出 schema 的硬约束,能走到这里的越界值
+    只可能是代码 bug,静默夹紧会让 bug 永远藏着。
+    """
+    if not MIN_AUTHORITY <= value <= MAX_AUTHORITY:
+        raise ValueError(f"权威度必须在 {MIN_AUTHORITY}~{MAX_AUTHORITY}: {value!r}")
+    return (value - MIN_AUTHORITY) / (MAX_AUTHORITY - MIN_AUTHORITY)
+
+
+def combine(quality: float, authority: int, authority_weight: float) -> float:
+    """最终分 = (1-gamma)·quality + gamma·authority。
+
+    为什么是凸组合而不是相乘/相加:
+      - 相乘会把"高权威 + 低质量"放大成不可控的异常值,还得额外设计截断;
+      - 直接相加没有上界,1000 分制会被撑破;
+      - 凸组合天然落在 [0,1],两项各占多少一眼可见,调 gamma 的效果可以手算出来。
+
+    这就是"搜索引擎"里 relevance 与 authority 的经典分层:quality 回答"它好不好",
+    authority 回答"它重不重要",两者不互相冒充。
+    """
+    if not 0.0 <= authority_weight <= 1.0:
+        raise ValueError(f"authority_weight 必须在 0~1: {authority_weight!r}")
+    if not 0.0 <= quality <= 1.0:
+        raise ValueError(f"quality 必须在 0~1: {quality!r}")
+    ratio = authority_ratio(authority)
+    return (1.0 - authority_weight) * quality + authority_weight * ratio
+
+
+def recompute_score(
+    breakdown: dict[str, Any] | None,
+    authority: int,
+    *,
+    default_authority_weight: float = DEFAULT_AUTHORITY_WEIGHT,
+) -> int | None:
+    """不调模型,用已有的 quality 快照重算 ai_score。
+
+    人工改权威度时走这条路:一次数据库更新就能看到排名变化,不用重跑一次 LLM。
+    优先用 breakdown 里记录的 authority_weight,而不是当前配置 —— 这样重算复现的是
+    当初那套公式,不会因为中途改了环境变量而让同一个工具前后两次分数口径不同。
+    """
+    if not breakdown:
+        return None
+    quality = breakdown.get("quality", breakdown.get("shrunk"))
+    weight = breakdown.get("authority_weight", default_authority_weight)
+    if isinstance(quality, bool) or not isinstance(quality, (int, float)):
+        return None
+    if isinstance(weight, bool) or not isinstance(weight, (int, float)):
+        return None
+    return to_score(combine(float(quality), authority, float(weight)))
 
 
 def prior_from_scores(existing: Sequence[int]) -> float:

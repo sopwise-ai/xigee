@@ -80,11 +80,15 @@ CREATE TABLE IF NOT EXISTS xg_topic (
 --    languages 界面支持语言，ISO 639-1 数组，首项为主语言（位置即语义）。
 --    tags      标签数组，最多 8 个；展示/检索用，无受控词表。
 --    ai_score  评分体系的【派生列】，由 app/scoring 离线管线写入：
---                raw = Σ w_i * ((s_i - 1) / 4)          六个维度，1~5 分
---                shrunk = (n * raw + m * prior) / (n + m) 经验贝叶斯收缩（n=证据条数）
---                ai_score = round(shrunk * 1000)        0~1000，越大越靠前
---              原始维度分、权重、采样与先验都留在 ai_score_breakdown，不要只凭
---              ai_score 反推口径；改 rubric/模型必须同时递增 ai_score_version。
+--                raw     = Σ w_i * ((s_i - 1) / 4)         六个维度，1~5 分
+--                quality = (n * raw + m * prior) / (n + m)  经验贝叶斯收缩（n=证据条数）
+--                ai_score = round(((1-γ)·quality + γ·authority/9) * 1000)
+--              authority 是 0~9 的行业权威度：ai_authority 由 AI 判断，
+--              authority_override 由人工覆盖（NULL=用 AI 的）。γ 是
+--              SCORING_AUTHORITY_WEIGHT（默认 0.50），它把"好不好"和"重不重要"
+--              两根轴按固定比例合成 —— 资料完整度只影响 quality，不影响 authority。
+--              维度分、权重、采样、quality、γ 全部留在 ai_score_breakdown；改
+--              rubric / 模型 / γ 必须同时递增 ai_score_version，否则两套口径混排。
 --    review_*  人工复核产物。review_score 为 NULL 即"未复核"，它同时是标识和标签；
 --              只用于校准 AI（回归测试集），【绝不参与排序】。
 -- ----------------------------------------------------------------------------
@@ -108,6 +112,9 @@ CREATE TABLE IF NOT EXISTS xg_tool (
   ai_score_version     VARCHAR(32)  DEFAULT NULL          COMMENT '评分口径签名（模型+rubric+权重版本）；不导出',
   ai_score_at          DATETIME     DEFAULT NULL          COMMENT '上次评分时间（NULL=从未评分）；不导出',
   ai_topics            JSON         DEFAULT NULL          COMMENT 'AI 主题分类建议 [{slug,confidence}]；不导出',
+  ai_authority         SMALLINT     NOT NULL DEFAULT 5    COMMENT 'AI 判断的行业权威度 0~9（越高越靠前）；派生值，不导出',
+  ai_score_input_hash  CHAR(64)     DEFAULT NULL          COMMENT '评分输入的 SHA-256（判断内容是否变化）；不导出',
+  authority_override   SMALLINT     DEFAULT NULL          COMMENT '人工覆盖的权威度 0~9（NULL=不覆盖）；改它可即时重算 ai_score，不导出',
   review_score         SMALLINT     DEFAULT NULL          COMMENT '人工复核分 0~1000（NULL=未复核）；不参与排序、不导出',
   reviewed_at          DATETIME     DEFAULT NULL          COMMENT '人工复核时间（不导出）',
   reviewed_by          VARCHAR(64)  DEFAULT NULL          COMMENT '复核人标识（不导出）',

@@ -230,6 +230,11 @@ async def _fetch_tools(session: AsyncSession) -> tuple[list[ExportItem], Counter
     )
     rows = (await session.execute(stmt)).scalars().all()
 
+    # 未评分的已发布工具 ai_score=0,会静默沉到列表最底。导出不阻断(缺分数不该
+    # 让整站没数据),但要留下能搜到的线索。
+    if unscored := [row.slug for row in rows if row.ai_score_at is None]:
+        logger.warning("有 %d 个已发布工具还没评分,会排在列表末尾: %s", len(unscored), unscored[:5])
+
     tools: list[ExportItem] = []
     skipped: Counter[str] = Counter()
     for row in rows:

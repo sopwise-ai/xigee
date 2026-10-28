@@ -1,5 +1,5 @@
 -- ============================================================================
--- 2026-10-27 · xg_tool.sort_order → ai_score，并引入 AI 评分的元数据与人工复核列
+-- 2026-10-28 · xg_tool.sort_order → ai_score，并引入评分元数据、权威度与人工复核列
 -- ----------------------------------------------------------------------------
 -- 为什么需要这个文件：
 --   sql/schema.sql 用的是 CREATE TABLE IF NOT EXISTS，它【不会】改已存在的表。
@@ -9,8 +9,8 @@
 --
 -- 执行方式（在 studio/ 下，连接信息与 db-init 同一套解析器）：
 --   mysql --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" \
---         --default-character-set=utf8mb4 "$DB_NAME" < sql/migrations/20261027_ai_score.sql
---   或： MYSQL_PWD=... mysql ... < sql/migrations/20261027_ai_score.sql
+--         --default-character-set=utf8mb4 "$DB_NAME" < sql/migrations/20261028_ai_score.sql
+--   或： MYSQL_PWD=... mysql ... < sql/migrations/20261028_ai_score.sql
 --
 -- 幂等性：**不幂等**。重复执行会在第一个 CHANGE COLUMN 处报 1054/1060。
 --   这是刻意的 —— 迁移只该跑一次，静默跳过比报错更危险。
@@ -25,6 +25,10 @@
 --   published_at DESC, id ASC（比让旧权重冒充 AI 分更安全）。
 --   如果你希望保留旧权重当占位，注释掉最后那条 UPDATE，并在部署后立刻跑：
 --     uv run python -m app.scoring --all --force
+--
+-- ⚠ 新增的三列都有默认值/NULL，不需要回填：
+--   ai_authority=5（中性）、authority_override=NULL（不覆盖）、
+--   ai_score_input_hash=NULL（下次 --changed 时会被视为"需要评分"）。
 -- ============================================================================
 
 ALTER TABLE xg_tool
@@ -38,15 +42,21 @@ ALTER TABLE xg_tool
   ADD COLUMN ai_score_breakdown JSON DEFAULT NULL
     COMMENT '维度分/权重/采样明细；复算与复核依据，不导出' AFTER ai_score_confidence,
   ADD COLUMN ai_score_version VARCHAR(32) DEFAULT NULL
-    COMMENT '评分口径签名（模型+rubric+权重版本）；不导出' AFTER ai_score_breakdown,
+    COMMENT '评分口径签名（模型+rubric+权威度占比）；不导出' AFTER ai_score_breakdown,
   ADD COLUMN ai_score_at DATETIME DEFAULT NULL
     COMMENT '上次评分时间（NULL=从未评分）；不导出' AFTER ai_score_version,
   ADD COLUMN ai_topics JSON DEFAULT NULL
     COMMENT 'AI 主题分类建议 [{slug,confidence}]；不导出' AFTER ai_score_at,
+  ADD COLUMN ai_authority SMALLINT NOT NULL DEFAULT 5
+    COMMENT 'AI 判断的行业权威度 0~9（越高越靠前）；派生值，不导出' AFTER ai_topics,
+  ADD COLUMN ai_score_input_hash CHAR(64) DEFAULT NULL
+    COMMENT '评分输入的 SHA-256（判断内容是否变化）；不导出' AFTER ai_authority,
 
-  -- 人工复核：review_score 为 NULL 即未复核（一个字段同时是标识和标签）
+  -- 人工数据：AI 管线不写这两类列
+  ADD COLUMN authority_override SMALLINT DEFAULT NULL
+    COMMENT '人工覆盖的权威度 0~9（NULL=不覆盖）；改它可即时重算 ai_score，不导出' AFTER ai_score_input_hash,
   ADD COLUMN review_score SMALLINT DEFAULT NULL
-    COMMENT '人工复核分 0~1000（NULL=未复核）；不参与排序、不导出' AFTER ai_topics,
+    COMMENT '人工复核分 0~1000（NULL=未复核）；不参与排序、不导出' AFTER authority_override,
   ADD COLUMN reviewed_at DATETIME DEFAULT NULL
     COMMENT '人工复核时间（不导出）' AFTER review_score,
   ADD COLUMN reviewed_by VARCHAR(64) DEFAULT NULL
@@ -59,7 +69,7 @@ ALTER TABLE xg_tool
 -- 旧的人工权重不能冒充 AI 分（见文件头「数据语义」）
 UPDATE xg_tool SET ai_score = 0 WHERE ai_score_at IS NULL;
 
--- 自检：应当看到 ai_score ~ reviewed_by 共 9 列，以及 idx_tool_status_score
+-- 自检：应当看到 ai_score ~ reviewed_by 共 12 列，以及 idx_tool_status_score
 SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT
 FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'xg_tool'

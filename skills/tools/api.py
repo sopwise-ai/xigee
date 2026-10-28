@@ -13,6 +13,7 @@
                                   [--topic-ids 1,2] [--primary-topic-id N] [--open-source | --no-open-source]
                                   [--featured | --no-featured] [--slug <slug>]
                                   [--review-score N | --clear-review] [--reviewed-by <name>]
+                                  [--authority 0-9 | --clear-authority]
   python skills/tools/api.py delete-tool <id>
   python skills/tools/api.py topics [--status {active,disabled}] [--page N] [--page-size N] [--json]   列出主题
   python skills/tools/api.py topic <id>                 查看主题详情
@@ -47,7 +48,7 @@
 注意: 只有读请求 (GET) 会自动退避重试；写操作 (POST/PUT/DELETE) 不重试，避免重复写入。
 """
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 
 import argparse
 import json
@@ -479,6 +480,9 @@ def cmd_tools(args):
         for t in data:
             t["status_name"] = TOOL_STATUS_NAMES.get(t.get("status"), "?")
             t["topic_names"] = _csv_of(t.get("topics") or [], "name")
+            # 0 是合法权威度,不能用 or 兜底
+            override = t.get("authority_override")
+            t["authority"] = override if override is not None else t.get("ai_authority")
         _print_table(
             data,
             [
@@ -487,6 +491,7 @@ def cmd_tools(args):
                 "slug",
                 "status_name",
                 "ai_score",
+                "authority",
                 "pricing",
                 "is_featured",
                 "topic_names",
@@ -497,6 +502,7 @@ def cmd_tools(args):
                 "slug": "Slug",
                 "status_name": "状态",
                 "ai_score": "AI分",
+                "authority": "权威度",
                 "pricing": "定价",
                 "is_featured": "精选",
                 "topic_names": "主题",
@@ -579,6 +585,11 @@ def cmd_update_tool(args):
         payload["review_score"] = args.review_score
     if args.reviewed_by is not None:
         payload["reviewed_by"] = args.reviewed_by
+    if args.clear_authority:
+        # null = 撤销人工覆盖,回到 AI 判断的权威度(并即时重算分数)
+        payload["authority_override"] = None
+    elif args.authority is not None:
+        payload["authority_override"] = args.authority
 
     confirm_text = ""
     new_status_name = TOOL_STATUS_NAMES.get(args.status or "", "?")
@@ -1064,6 +1075,18 @@ def main():
         "--clear-review", action="store_true", help="撤销复核（review_score 置 NULL）"
     )
     p.add_argument("--reviewed-by", default=None, help="复核人标识")
+    p.add_argument(
+        "--authority",
+        type=int,
+        default=None,
+        metavar="0-9",
+        help="人工覆盖行业权威度(0~9);会即时重算 ai_score,不调模型",
+    )
+    p.add_argument(
+        "--clear-authority",
+        action="store_true",
+        help="撤销人工覆盖,回到 AI 判断的权威度",
+    )
     p.set_defaults(func=cmd_update_tool)
 
     # delete tool

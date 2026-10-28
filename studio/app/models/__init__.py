@@ -219,8 +219,14 @@ class Tool(Base):
     ai_score_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
     ai_score_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ai_topics: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+    # 行业权威度 0~9:AI 的建议值。人工覆盖见下面的 authority_override
+    ai_authority: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="5")
+    # 评分输入的 SHA-256:用来判断"内容变没变",决定 --changed 要不要重算
+    ai_score_input_hash: Mapped[str | None] = mapped_column(CHAR(64), nullable=True)
 
-    # ── 人工复核(AI 管线不许写) ───────────────────────────────────────────────
+    # ── 人工数据(AI 管线不许写) ───────────────────────────────────────────────
+    # 人工覆盖的权威度(NULL=不覆盖)。改它可以直接重算 ai_score,不需要再调模型。
+    authority_override: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     # review_score 为 NULL 即"未复核":一个字段同时承担标识与结论,避免出现
     # "标记为已复核、但没有复核结论"的自相矛盾状态。它只用于校准评分,不参与排序。
     review_score: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)

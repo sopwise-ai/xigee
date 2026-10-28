@@ -31,6 +31,9 @@ MAX_TAGLINE_LENGTH = 100
 # AI 评分的值域(与 schema.sql 的 SMALLINT/0~1000 口径一致)。派生列本身不由 API
 # 写入,这里只用于人工复核分 review_score —— 它与 ai_score 同一把尺子,才好校准。
 MAX_AI_SCORE = 1000
+# 行业权威度值域(与 schema.sql 的 0~9 口径一致)。AI 给建议值,人工可覆盖;
+# 它不是 rubric 的维度权重,命名上刻意区分。
+MAX_AUTHORITY = 9
 _LANG_CODE_LENGTH = 2
 
 
@@ -256,6 +259,8 @@ class ToolUpdate(BaseModel):
     # 传值则端点自动补 reviewed_at 与 reviewed_by(缺省沿用原复核人)。
     review_score: int | None = Field(None, ge=0, le=MAX_AI_SCORE)
     reviewed_by: str | None = Field(None, max_length=64)
+    # 人工覆盖权威度 0~9;显式 null = 撤销覆盖(回到 AI 的判断)
+    authority_override: int | None = Field(None, ge=0, le=MAX_AUTHORITY)
     topic_ids: list[int] | None = None
     primary_topic_id: int | None = None
 
@@ -297,6 +302,8 @@ class ToolResponse(ToolBase):
     ai_score_version: str | None = None
     ai_score_at: datetime | None = None
     ai_topics: list[dict[str, Any]] | None = None
+    ai_authority: int = 5
+    authority_override: int | None = None
     # 人工复核(只读回显;写入口是 ToolUpdate 的 review_score)
     review_score: int | None = None
     reviewed_at: datetime | None = None

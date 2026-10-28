@@ -66,7 +66,7 @@ uv run python -m app --help   # 直接看入口支持的参数
 - **但它不是迁移工具**:`CREATE TABLE IF NOT EXISTS` 不会改已存在的表,所以删/改列之后,老库重跑 `db-init` 不会有任何变化(表还在旧结构上,服务会报 `Unknown column`)。仓库刻意没有引入 alembic —— 表结构只有 4 张、且要兼顾 5.7/8.0,加一层迁移框架的收益不抵它的维护面。改列的落地方式二选一:
   - 数据不要了(dev/sit 常见):`DROP TABLE xg_tool_link, xg_tool_topic, xg_tool;` 再 `make db-init`(一条语句里一起删,否则外键会拦住 `xg_tool`)。
   - 要留数据:自己写 `ALTER TABLE`(`CHANGE COLUMN` 改名不会丢数据;`DROP COLUMN` 会)。
-  - **本次 `sort_order` → `ai_score` 已备好一次性脚本**:`sql/migrations/20261027_ai_score.sql`。它不幂等,只该跑一次;跑完老库才有评分/复核列,否则服务会报 `Unknown column 'xg_tool.ai_score'`。
+  - **本次 `sort_order` → `ai_score` 已备好一次性脚本**:`sql/migrations/20261028_ai_score.sql`。它不幂等,只该跑一次;跑完老库才有评分/复核列,否则服务会报 `Unknown column 'xg_tool.ai_score'`。
 - 连接信息按 `APP_ENV` 从 `.env.<APP_ENV>` 读 (默认 `dev`)。**解析器只有 `app/core/config.py` 一个** —— 服务、`db-init`、导出器都走它,Makefile 不再自己解析 `.env`(以前用 sed 抄过一套 dotenv 规则,导致 `DB_PASSWORD="p@ss word"` 这类写法会让 make 与服务拿到不同的值)
 - 要临时指向别的库,用环境变量覆盖(`pydantic-settings` 里环境变量优先于 `.env` 文件;make 自己会把命令行变量原样传给 app,不需要 Makefile 再转发一遍):`make db-init DB_HOST=127.0.0.1 DB_PORT=9999 DB_NAME=scratch`
 - 密码通过 `MYSQL_PWD` 环境变量传给客户端,不出现在命令行里(`ps` 对同机器其他用户可见)
@@ -90,23 +90,27 @@ uv run python -m app --help   # 直接看入口支持的参数
 
 **Python 侧只有 `app/core/config.py` 解析这些文件。** Makefile 既不解析、也不转发 `DB_*`(make 自己会把命令行变量与已导出的环境变量原样传进 recipe,理由见 Makefile 顶部注释);`scripts/` 里只有 `scripts/mcp-mysql.sh` 要读同一份文件去喂 MySQL MCP server,它也只按需挑 `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD` 五个键(不 `source`、不导出 `API_KEY`,且不执行文件里的 `$(...)`)。进程环境变量优先于 `.env` 文件,所以临时覆盖用 `make dev PORT=9000` 或 `DB_NAME=scratch make db-init`。`scripts/` 下其余的脚本连读都不读:studio 的监听端口与 API Key 都由 `scripts/lib.sh` 向 app 问(`studio_port` / `studio_api_key`),不抄第二份解析器。
 
-| 变量                                      | 默认值                                          | 说明                                                                                                                                                                                     |
-| ----------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `APP_ENV`                                 | `dev`                                           | `dev` / `sit` / `prod`;决定加载哪个 `.env.<env>`,也决定导出产物后缀。**必须由进程环境变量提供**(`APP_ENV=sit make dev`):写进 `.env.<env>` 不会切换加载的文件,只会覆盖 `Settings.app_env` |
-| `APP_DEBUG`                               | `true`                                          | prod 下必须为 `false`,否则启动直接失败                                                                                                                                                   |
-| `APP_HOST` / `APP_PORT`                   | `127.0.0.1` / `8000`                            | `python -m app` 的监听地址(`--host` / `--port` 或 `make dev PORT=9000` 覆盖);`make prod` 默认 `0.0.0.0`                                                                                  |
-| `LOG_LEVEL`                               | `INFO`                                          | 日志级别:`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL`,大小写不敏感                                                                                                                |
-| `DB_HOST` / `DB_PORT`                     | `localhost` / `3306`                            | MySQL 地址                                                                                                                                                                               |
-| `DB_NAME` / `DB_USER` / `DB_PASSWORD`     | 空                                              | 必填 (`DB_PASSWORD` 可以是空串);为空时**启动即失败**,不等第一次查询                                                                                                                      |
-| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW`        | `5` / `10`                                      | 连接池;测试进程用 `NullPool`,这两个值不生效                                                                                                                                              |
-| `DB_ECHO`                                 | `false`                                         | 打印 SQL;只在本地排查问题时打开                                                                                                                                                          |
-| `EXPORT_OUTPUT_DIR`                       | `../web/data`                                   | 导出目录,相对路径按 `studio/` 解析 (与 cwd 无关)                                                                                                                                         |
-| `CORS_ORIGINS`                            | `http://localhost:3000,http://localhost:5173`   | 逗号分隔白名单,**`*` 与空值都会被启动校验拒绝**                                                                                                                                          |
-| `API_KEY`                                 | `dev-secret-key`                                | 写操作的 `X-API-Key`;`sit` / `prod` 不允许留默认值                                                                                                                                       |
-| `LLM_BASE_URL` / `LLM_MODEL`              | `https://api.deepseek.com/v1` / `deepseek-chat` | AI 评分管线的 OpenAI 兼容端点与模型;服务进程不使用,留空不影响启动                                                                                                                        |
-| `LLM_API_KEY`                             | 空                                              | 只有 `python -m app.scoring` 需要;缺它时评分命令以退出码 2 失败                                                                                                                          |
-| `LLM_TIMEOUT` / `LLM_TEMPERATURE`         | `60` / `0.2`                                    | 单次请求超时(秒) / 采样温度。温度必须 >0,否则 N 次采样完全相同,置信度恒为 1                                                                                                              |
-| `SCORING_SAMPLES` / `SCORING_CONCURRENCY` | `3` / `4`                                       | 每个工具采样次数 / 并发请求数                                                                                                                                                            |
+| 变量                                             | 默认值                                        | 说明                                                                                                                                                                                     |
+| ------------------------------------------------ | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_ENV`                                        | `dev`                                         | `dev` / `sit` / `prod`;决定加载哪个 `.env.<env>`,也决定导出产物后缀。**必须由进程环境变量提供**(`APP_ENV=sit make dev`):写进 `.env.<env>` 不会切换加载的文件,只会覆盖 `Settings.app_env` |
+| `APP_DEBUG`                                      | `true`                                        | prod 下必须为 `false`,否则启动直接失败                                                                                                                                                   |
+| `APP_HOST` / `APP_PORT`                          | `127.0.0.1` / `8000`                          | `python -m app` 的监听地址(`--host` / `--port` 或 `make dev PORT=9000` 覆盖);`make prod` 默认 `0.0.0.0`                                                                                  |
+| `LOG_LEVEL`                                      | `INFO`                                        | 日志级别:`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL`,大小写不敏感                                                                                                                |
+| `DB_HOST` / `DB_PORT`                            | `localhost` / `3306`                          | MySQL 地址                                                                                                                                                                               |
+| `DB_NAME` / `DB_USER` / `DB_PASSWORD`            | 空                                            | 必填 (`DB_PASSWORD` 可以是空串);为空时**启动即失败**,不等第一次查询                                                                                                                      |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW`               | `5` / `10`                                    | 连接池;测试进程用 `NullPool`,这两个值不生效                                                                                                                                              |
+| `DB_ECHO`                                        | `false`                                       | 打印 SQL;只在本地排查问题时打开                                                                                                                                                          |
+| `EXPORT_OUTPUT_DIR`                              | `../web/data`                                 | 导出目录,相对路径按 `studio/` 解析 (与 cwd 无关)                                                                                                                                         |
+| `CORS_ORIGINS`                                   | `http://localhost:3000,http://localhost:5173` | 逗号分隔白名单,**`*` 与空值都会被启动校验拒绝**                                                                                                                                          |
+| `API_KEY`                                        | `dev-secret-key`                              | 写操作的 `X-API-Key`;`sit` / `prod` 不允许留默认值                                                                                                                                       |
+| `LLM_BASE_URL` / `LLM_MODEL`                     | `https://api.deepseek.com` / `deepseek-flash` | 评分管线端点与模型。旧的 `deepseek-chat` 已于 2026-07-24 下线,写旧名会失败                                                                                                               |
+| `LLM_API_KEY`                                    | 空                                            | 只有 `python -m app.scoring` 需要;缺它时评分命令以退出码 2 失败                                                                                                                          |
+| `LLM_TIMEOUT_SECONDS` / `LLM_MAX_RETRIES`        | `60` / `2`                                    | 单次请求超时(秒) / 网络与限流重试次数                                                                                                                                                    |
+| `LLM_MAX_OUTPUT_TOKENS` / `LLM_REASONING_EFFORT` | `4000` / `low`                                | 单次响应上限(含思考 token) / 思考强度 `low`/`high`/`max`。思考模式下没有 temperature                                                                                                     |
+| `LLM_STRUCTURED_OUTPUT`                          | `json_schema`                                 | `json_schema`(解码层约束,首选)或 `json_object`(provider 不支持时降级)                                                                                                                    |
+| `SCORING_SAMPLES` / `SCORING_CONCURRENCY`        | `3` / `4`                                     | 每个工具采样次数 / 并发请求数                                                                                                                                                            |
+| `SCORING_AUTHORITY_WEIGHT`                       | `0.50`                                        | 权威度在最终分里的占比 γ;改它会改变 `ai_score_version`                                                                                                                                   |
+| `SCORING_STALE_DAYS`                             | `90`                                          | `--stale-days` 不带数值时的默认天数                                                                                                                                                      |
 
 两个必须知道的坑:
 
@@ -141,22 +145,40 @@ make export-prod     # 注意: 会覆盖 web/data/topics.json 与 tools.json (�
 `xg_tool` 的排序键不再是人工权重 `sort_order`,而是 AI 评分的派生列 `ai_score`(0~1000):
 
 ```
-raw    = Σ w_i · (s_i - 1) / 4              六个维度各 1~5 分,权重见 app/scoring/rubric.py
-shrunk = (n·raw + m·prior) / (n + m)        经验贝叶斯收缩(n=证据条数, m=2, prior=全站中位数)
-ai_score = round(shrunk × 1000)             仅展示尺度,不改排序关系
+raw      = Σ w_i · (s_i - 1) / 4                        六个维度各 1~5 分(权重见 app/scoring/rubric.py)
+quality  = (n·raw + m·prior) / (n + m)                   经验贝叶斯收缩(n=证据条数, m=2, prior=全站中位数)
+ai_score = round(((1-γ)·quality + γ·authority/9) · 1000) γ = SCORING_AUTHORITY_WEIGHT(默认 0.50)
 ```
 
-- **唯一的写入口**是离线管线 `python -m app.scoring`;API 与人工都不写 `ai_score`。原始维度分、权重、采样、先验全部留在 `ai_score_breakdown`,可复算
-- 分类是**闭集**:主题清单来自 `xg_topic`,模型只能选清单里的 slug,输出后再按白名单过滤一次。每次采样都投票,半数以上才采用
-- 每个工具默认采样 3 次(中位数 + 采样一致率),`ai_score_confidence` 就是一致率;它衡量模型稳不稳定,不衡量分数对不对
-- 人工复核写在 `review_score`(NULL=未复核,同时是标识和结论)。它**不参与排序**,只作为 few-shot 锚点校准后续评分 —— 复核 10~30 条之后,评分尺度会明显更接近人
-- 改了 rubric/权重/模型必须递增 `RUBRIC_VERSION`,否则两套口径的分数会混在一张表里排序
+两根轴刻意分开,不许互相冒充:
+
+- `quality` 回答"它好不好",由 6 个维度合成;资料越全,收缩越轻
+- `authority` 回答"它重不重要",取值 0~9:AI 给 `ai_authority`,人工可用 `authority_override` 覆盖
+- **资料完整度只影响 quality 的证据收缩,绝不参与 authority 判断** —— 资料残缺但行业地位高的工具不会沉底,资料齐全但本质平庸的工具也不会靠前
+- 人工改 `authority_override` 会**立即**用 `ai_score_breakdown` 里的 quality 重算 `ai_score`,不调用模型
+
+重算有五个理由,全部手动触发(`make score`):
+
+| 参数                        | 选中的行                                   |
+| --------------------------- | ------------------------------------------ |
+| 不带参数                    | 从未评分(`ai_score_at IS NULL`)            |
+| `ARGS="--changed"`          | 评分输入的 SHA-256 变了的                  |
+| `ARGS="--stale-days"`       | 超过 `SCORING_STALE_DAYS`(默认 90)天没评的 |
+| `ARGS="--outdated-version"` | rubric / 模型 / γ 变了的                   |
+| `ARGS="--all"`              | 全量                                       |
 
 ```bash
-uv run python -m app.scoring --limit 10 --dry-run    # 先看效果,不写库
-uv run python -m app.scoring                         # 只补没评过的
-uv run python -m app.scoring --all --apply-topics    # 全量重评并把主题建议写进 xg_tool_topic
+make score ARGS="--limit 10 --dry-run"    # 先看效果,不写库
+make score ARGS="--changed"               # 内容变了的
+make score ARGS="--stale-days"            # 太久的(默认 90 天)
+make score ARGS="--all --apply-topics"    # 全量重评并把主题建议写进 xg_tool_topic
 ```
+
+- **唯一的 AI 写入口**是离线管线,API 与人工都不写 `ai_*`;维度分、权重、采样、quality、γ 全在 `ai_score_breakdown` 里,可复算
+- 分类是**闭集**:主题清单来自 `xg_topic`,输出后再按白名单过滤;每次采样投票,半数以上才采用
+- 默认采样 3 次(中位数 + 采样一致率),`ai_score_confidence` 是采样一致率 —— 它衡量模型稳不稳定,不衡量分数对不对
+- 人工复核写在 `review_score`(NULL=未复核),只作为 few-shot 锚点校准评分,**不参与排序**
+- 改了 rubric / 权重 / 模型 / γ 必须让 `ai_score_version` 变一次,否则两套口径的分数会混在一张表里排序
 
 `--dry-run` 会照常调用模型,但最后回滚事务。退出码:0 全部成功 / 1 有工具失败(其余已提交) / 2 配置缺失。
 
@@ -213,17 +235,17 @@ make test-cov ALLOW_SHARED_DB=1   # 加覆盖率; pyproject 里 fail_under = 74
 
 ## 常用命令
 
-| 命令                                             | 作用                                                                               |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `make sync`                                      | `uv sync` 安装/同步依赖                                                            |
-| `make db-init`                                   | 建表 (`python -m app.db_init`,幂等;需 mysql 客户端)                                |
-| `make dev` / `sit` / `prod`                      | 按环境启动服务 (`python -m app`)                                                   |
-| `make lint` / `typecheck` / `format`             | ruff 检查 / mypy 类型检查 / ruff 格式化                                            |
-| `make check`                                     | 上面三项 + 格式校验一起跑 (CI 的 lint 段就是它)                                    |
-| `make test` / `test-cov`                         | 测试 (可带覆盖率);共享库要加 `ALLOW_SHARED_DB=1`                                   |
-| `make score ARGS="..."`                          | AI 分类 + 评分 (默认只补没评过的;`--all` / `--dry-run` / `--apply-topics`)         |
-| `make export-dev` / `export-sit` / `export-prod` | 导出 JSON                                                                          |
-| `make clean`                                     | 清掉 `.ruff_cache` / `.pytest_cache` / `.mypy_cache` / `.coverage` / `__pycache__` |
+| 命令                                             | 作用                                                                                                     |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `make sync`                                      | `uv sync` 安装/同步依赖                                                                                  |
+| `make db-init`                                   | 建表 (`python -m app.db_init`,幂等;需 mysql 客户端)                                                      |
+| `make dev` / `sit` / `prod`                      | 按环境启动服务 (`python -m app`)                                                                         |
+| `make lint` / `typecheck` / `format`             | ruff 检查 / mypy 类型检查 / ruff 格式化                                                                  |
+| `make check`                                     | 上面三项 + 格式校验一起跑 (CI 的 lint 段就是它)                                                          |
+| `make test` / `test-cov`                         | 测试 (可带覆盖率);共享库要加 `ALLOW_SHARED_DB=1`                                                         |
+| `make score ARGS="..."`                          | AI 分类 + 评分 + 权威度 (默认只补没评过的;`--changed` / `--stale-days` / `--outdated-version` / `--all`) |
+| `make export-dev` / `export-sit` / `export-prod` | 导出 JSON                                                                                                |
+| `make clean`                                     | 清掉 `.ruff_cache` / `.pytest_cache` / `.mypy_cache` / `.coverage` / `__pycache__`                       |
 
 三个 `make` 目标只是 `uv run python -m <模块>` 的薄封装(它们不解析 `.env`,全靠 app 自己读),所以直接用入口也完全等价:`uv run python -m app --help`、`uv run python -m app.db_init`、`uv run python -m app.exporters`、`uv run python -m app.scoring --help`。
 

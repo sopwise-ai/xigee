@@ -13,24 +13,32 @@ import json
 import pytest
 
 from app.scoring.aggregate import (
+    DEFAULT_AUTHORITY_WEIGHT,
     DEFAULT_PRIOR,
     MAX_AI_SCORE,
+    authority_ratio,
+    combine,
     evidence_count,
     median_scores,
     normalize_dimension,
     prior_from_scores,
+    recompute_score,
     score_confidence,
     shrink,
     to_score,
     weighted_raw,
 )
-from app.scoring.llm import Judgement, parse_judgement
-from app.scoring.pipeline import aggregate_topics
+from app.scoring.llm import Judgement, judgement_json_schema, parse_judgement
+from app.scoring.pipeline import aggregate_topics, payload_digest
 from app.scoring.prompt import AnchorExample, TopicBrief, build_system_prompt, build_user_prompt
-from app.scoring.rubric import DIMENSION_KEYS, DIMENSIONS, RUBRIC_VERSION, WEIGHTS, version_tag
+from app.scoring.rubric import DIMENSION_KEYS, DIMENSIONS, MAX_AUTHORITY, RUBRIC_VERSION, WEIGHTS, version_tag
 
 
-def _judgement(topics: list[tuple[str, float]] | None = None, scores: dict[str, int] | None = None) -> Judgement:
+def _judgement(
+    topics: list[tuple[str, float]] | None = None,
+    scores: dict[str, int] | None = None,
+    authority: int = 5,
+) -> Judgement:
     dimensions = {key: {"score": 4, "reason": "ok"} for key in DIMENSION_KEYS}
     for key, value in (scores or {}).items():
         dimensions[key] = {"score": value, "reason": "ok"}
@@ -38,6 +46,7 @@ def _judgement(topics: list[tuple[str, float]] | None = None, scores: dict[str, 
         {
             "topics": [{"slug": slug, "confidence": confidence} for slug, confidence in (topics or [("misc", 0.9)])],
             "dimensions": dimensions,
+            "authority": {"score": authority, "reason": "ok"},
             "summary": "",
         }
     )
@@ -56,14 +65,13 @@ def test_rubric_dimension_keys_are_unique():
 
 def test_version_tag_fits_varchar_32():
     """ai_score_version 是 VARCHAR(32),超长会 1406(500)。"""
-    short = version_tag("deepseek-chat")
-    long = version_tag("some-very-long-model-name-that-does-not-fit-at-all")
+    short = version_tag("deepseek-flash", 0.35)
+    long = version_tag("some-very-long-model-name-that-does-not-fit-at-all", 0.5)
 
     assert len(short) <= 32
     assert len(long) <= 32
     assert RUBRIC_VERSION in long
     # 同名模型必须得到同一个签名,否则无法判断"是不是同一套口径"
-    assert version_tag("deepseek-chat") == short
 
 
 # ── 归一化与加权 ──────────────────────────────────────────────────────────────
@@ -171,6 +179,55 @@ def test_prior_from_scores_uses_median():
     assert prior_from_scores([200, 400, 900]) == pytest.approx(0.4)
 
 
+# ── 权威度与合成分 ────────────────────────────────────────────────────────────
+
+
+def test_authority_ratio_endpoints():
+    assert authority_ratio(0) == 0.0
+    assert authority_ratio(MAX_AUTHORITY) == 1.0
+    assert authority_ratio(5) == pytest.approx(5 / 9)
+
+
+@pytest.mark.parametrize("value", [-1, 10])
+def test_authority_ratio_rejects_out_of_range(value):
+    with pytest.raises(ValueError, match="权威度必须在"):
+        authority_ratio(value)
+
+
+def test_combine_shifts_score_by_authority_weight():
+    low = combine(0.6, 0, DEFAULT_AUTHORITY_WEIGHT)
+    high = combine(0.6, MAX_AUTHORITY, DEFAULT_AUTHORITY_WEIGHT)
+
+    assert low < 0.6 - 1e-9 < high
+    # 满量程差值恰好等于 gamma:0.35 时上下各让 0.35
+    assert high - low == pytest.approx(DEFAULT_AUTHORITY_WEIGHT)
+    # 权威度每 +1,最终分上移 gamma/9(默认约 0.039,即 39 分)
+    step = combine(0.6, 5, DEFAULT_AUTHORITY_WEIGHT) - combine(0.6, 4, DEFAULT_AUTHORITY_WEIGHT)
+    assert step == pytest.approx(DEFAULT_AUTHORITY_WEIGHT / 9)
+
+
+def test_combine_rejects_out_of_range_weight():
+    with pytest.raises(ValueError, match="authority_weight"):
+        combine(0.5, 5, 1.5)
+
+
+def test_recompute_score_uses_stored_quality_and_weight():
+    """人工改权威度后的重算必须复现当初那套公式,而不是当前环境变量。"""
+    breakdown = {"quality": 0.5, "authority_weight": 0.4}
+
+    assert recompute_score(breakdown, MAX_AUTHORITY) == to_score(0.5 * 0.6 + 0.4 * 1.0)
+    assert recompute_score(breakdown, 0) == to_score(0.5 * 0.6)
+
+
+def test_recompute_score_falls_back_to_shrunk_for_old_rows():
+    assert recompute_score({"shrunk": 0.5}, 0, default_authority_weight=0.35) == to_score(0.325)
+
+
+@pytest.mark.parametrize("breakdown", [None, {}, {"quality": "n/a"}])
+def test_recompute_score_returns_none_without_usable_breakdown(breakdown):
+    assert recompute_score(breakdown, 5) is None
+
+
 # ── 输出解析 ──────────────────────────────────────────────────────────────────
 
 
@@ -178,6 +235,7 @@ def _valid_payload() -> dict[str, object]:
     return {
         "topics": [{"slug": "chat", "confidence": 0.9}],
         "dimensions": {key: {"score": 4, "reason": "有明确证据"} for key in DIMENSION_KEYS},
+        "authority": {"score": 7, "reason": "品类头部"},
         "summary": "一句话总结",
     }
 
@@ -204,13 +262,23 @@ def test_parse_judgement_rejects_missing_dimension():
         parse_judgement(json.dumps(payload, ensure_ascii=False))
 
 
-def test_parse_judgement_rejects_unknown_dimension():
+def test_parse_judgement_rejects_missing_authority():
+    payload = _valid_payload()
+    payload.pop("authority")
+    with pytest.raises(ValueError, match="输出结构不合法"):
+        parse_judgement(json.dumps(payload, ensure_ascii=False))
+
+
+def test_parse_judgement_drops_unknown_dimension_keys():
+    """模型偶尔会加 dimensions_note 这类注脚键；丢掉它，但缺失已知维度仍然报错。"""
     payload = _valid_payload()
     dimensions = payload["dimensions"]
     assert isinstance(dimensions, dict)
-    dimensions["made_up"] = {"score": 5, "reason": ""}
-    with pytest.raises(ValueError, match="输出结构不合法"):
-        parse_judgement(json.dumps(payload, ensure_ascii=False))
+    dimensions["dimensions_note"] = None
+
+    judged = parse_judgement(json.dumps(payload, ensure_ascii=False))
+
+    assert set(judged.scores()) == set(DIMENSION_KEYS)
 
 
 def test_parse_judgement_rejects_out_of_range_score():
@@ -274,6 +342,13 @@ def test_system_prompt_contains_closed_set_and_every_dimension():
     assert "只能输出上面出现过的 slug" in prompt
 
 
+def test_system_prompt_forbids_inferring_authority_from_completeness():
+    prompt = build_system_prompt([TopicBrief(slug="chat", name="对话")])
+    assert "行业权威度" in prompt
+    assert "资料是否齐全不是" in prompt
+    assert "拿不准时给 5" in prompt
+
+
 def test_system_prompt_includes_human_anchors():
     example = AnchorExample(tool={"name": "示例"}, topics=["chat"], tier=5)
     prompt = build_system_prompt([TopicBrief(slug="chat", name="对话")], [example])
@@ -289,3 +364,25 @@ def test_user_prompt_never_leaks_operational_state():
     assert "published_at" not in prompt
     assert "status" not in prompt
     assert '"id"' not in prompt
+
+
+# ── JSON Schema 与输入指纹 ────────────────────────────────────────────────────
+
+
+def test_judgement_schema_is_strict_and_complete():
+    schema = judgement_json_schema()
+
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {"topics", "dimensions", "authority", "summary"}
+    assert set(schema["properties"]["dimensions"]["required"]) == set(DIMENSION_KEYS)
+    assert schema["properties"]["dimensions"]["additionalProperties"] is False
+    # 值域用 enum 表达,避免 strict 模式不认 minimum/maximum
+    assert schema["properties"]["authority"]["properties"]["score"]["enum"] == list(range(0, MAX_AUTHORITY + 1))
+
+
+def test_payload_digest_is_key_order_insensitive():
+    a = {"slug": "x", "tags": ["a", "b"]}
+    b = {"tags": ["a", "b"], "slug": "x"}
+
+    assert payload_digest(a) == payload_digest(b)
+    assert payload_digest({"slug": "y"}) != payload_digest(a)

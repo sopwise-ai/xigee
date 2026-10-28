@@ -78,8 +78,15 @@ DIMENSIONS: tuple[Dimension, ...] = (
 DIMENSION_KEYS: tuple[str, ...] = tuple(d.key for d in DIMENSIONS)
 WEIGHTS: dict[str, float] = {d.key: d.weight for d in DIMENSIONS}
 
-# 口径版本:维度/权重/锚点变一次就 +1
-RUBRIC_VERSION = "r1.2026-10-27"
+# 口径版本:维度/权重/锚点/公式变一次就 +1
+RUBRIC_VERSION = "r2"
+RUBRIC_REVISION = "2026-10-28"
+
+# 权威度(authority)的值域。它不是质量分,是"这东西在行业里有多重要"的先验,
+# 与 rubric 的维度权重是两回事,所以刻意不叫 weight。
+MIN_AUTHORITY = 0
+MAX_AUTHORITY = 9
+DEFAULT_AUTHORITY = 5
 
 # 1~5 分的端点:归一化用 (score - MIN) / (MAX - MIN),与 aggregate 共用一份
 MIN_DIMENSION_SCORE = 1
@@ -99,16 +106,20 @@ def _validate() -> None:
 _validate()
 
 
-def version_tag(model: str) -> str:
-    """把"口径 + 模型"压成 ≤32 字符的签名,写进 ai_score_version。
+def version_tag(model: str, authority_weight: float) -> str:
+    """把"口径 + 权威度占比 + 模型"压成 ≤32 字符的签名,写进 ai_score_version。
 
-    xg_tool.ai_score_version 是 VARCHAR(32):模型名一长就会溢出(MySQL 严格模式报 1406),
-    所以超长时只保留口径版本 + 模型名的短哈希 —— 仍然能回答"是不是同一套口径/同一个
-    模型",只是不再能读出完整模型名(完整值在 ai_score_breakdown 里)。
+    为什么要把 authority_weight 也编进去:它直接改最终分(0.35 → 0.50 会让每个工具
+    都变分)。不编进版本号,两套公式的分数就会混在一张表里排序,而且没有任何痕迹。
+
+    xg_tool.ai_score_version 是 VARCHAR(32):超长时只保留口径 + 模型名的短哈希 ——
+    仍能回答"是不是同一套口径/同一个模型",完整模型名在 ai_score_breakdown 里。
     """
-    raw = f"{RUBRIC_VERSION}@{model}"
-    if len(raw) <= 32:
-        return raw
     from hashlib import sha256
 
-    return f"{RUBRIC_VERSION}#{sha256(model.encode('utf-8')).hexdigest()[:8]}"
+    weight_tag = round(authority_weight * 100)
+    prefix = f"{RUBRIC_VERSION}|w{weight_tag}"
+    raw = f"{prefix}|{model}"
+    if len(raw) <= 32:
+        return raw
+    return f"{prefix}|{sha256(model.encode('utf-8')).hexdigest()[:8]}"

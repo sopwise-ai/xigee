@@ -20,12 +20,13 @@ from tests.conftest import create_tool, create_topic
 class _FakeJudge:
     """回声判分器: 固定返回一份合法 JSON,不碰网络。"""
 
-    def __init__(self, topics: list[str]) -> None:
+    def __init__(self, topics: list[str], authority: int = 5) -> None:
         self._topics = topics
         self._payload = json.dumps(
             {
                 "topics": [{"slug": slug, "confidence": 0.9} for slug in self._topics],
                 "dimensions": {key: {"score": 4, "reason": "测试固定值"} for key in DIMENSION_KEYS},
+                "authority": {"score": authority, "reason": "测试固定值"},
                 "summary": "集成测试",
             },
             ensure_ascii=False,
@@ -59,10 +60,12 @@ async def test_pipeline_writes_ai_fields_without_touching_review(async_client):
     assert report.failed == 0
 
     data = (await async_client.get(f"/api/v1/tools/{tool['id']}")).json()
-    # 证据 3 条(描述/标签/主题) + 三维 4 分 → 收缩后约 0.65
+    # 证据 3 条(描述/标签/主题) + 三维 4 分 → quality≈0.65;authority 5/9
     assert 600 <= data["ai_score"] <= 700
+    assert data["ai_authority"] == 5
+    assert data["authority_override"] is None
     assert data["ai_score_at"] is not None
-    assert data["ai_score_version"] == version_tag("fake-model")
+    assert data["ai_score_version"] == version_tag("fake-model", 0.50)
     assert data["ai_topics"][0]["slug"] == "chat"
 
     # 人工字段必须逐字不变
@@ -97,3 +100,36 @@ async def test_pipeline_apply_topics_replaces_membership(async_client):
     data = (await async_client.get(f"/api/v1/tools/{tool['id']}")).json()
     assert [item["slug"] for item in data["topics"]] == ["new-topic"]
     assert data["primary_topic_id"] == new["id"]
+
+
+async def test_authority_override_recomputes_score_without_model(async_client):
+    """人工覆盖权威度 → 服务端用 breakdown 里的 quality 立即重算,不调模型。"""
+    topic = await create_topic(async_client, slug="chat", name="对话")
+    tool = await create_tool(
+        async_client,
+        slug="authority-tool",
+        name="权威度工具",
+        description="一个用于测试权威度覆盖的工具。",
+        tags=["a", "b", "c"],
+        topic_ids=[topic["id"]],
+        links=[{"url": "https://authority.example.com"}],
+        status="published",
+    )
+    async with AsyncSessionLocal() as session:
+        await run_scoring(session, _FakeJudge(["chat"]), ScoringOptions(samples=1), model_name="fake-model")
+        await session.commit()
+
+    baseline = (await async_client.get(f"/api/v1/tools/{tool['id']}")).json()
+    assert baseline["ai_authority"] == 5
+
+    raised = (await async_client.put(f"/api/v1/tools/{tool['id']}", json={"authority_override": 9})).json()
+    assert raised["authority_override"] == 9
+    # AI 的建议值不能被人工覆盖改写
+    assert raised["ai_authority"] == 5
+    assert raised["ai_score"] > baseline["ai_score"]
+    # gamma=0.5:权威度 5→9 约 +222 分
+    assert raised["ai_score"] - baseline["ai_score"] == 222
+
+    cleared = (await async_client.put(f"/api/v1/tools/{tool['id']}", json={"authority_override": None})).json()
+    assert cleared["authority_override"] is None
+    assert cleared["ai_score"] == baseline["ai_score"]
