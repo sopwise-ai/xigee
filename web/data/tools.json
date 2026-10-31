@@ -105493,5 +105493,16 @@
         "url": "https://github.com/CompVis/stable-diffusion"
       }
     ]
+  },
+  {
+    "id": "agent-qa",
+    "name": "agent-qa",
+    "tagline": "自然语言网页与移动应用测试，结合持久记忆与自我改进。",
+    "description": "通过 CLI 和 MCP 用自然语言测试网页、Android 和 iOS，具备 memidex 持久记忆与经验证的自我改进能力；需配置模型访问，模型费用另计。",
+    "url": "https://vostride.com",
+    "topics": ["developer-tools", "agents"],
+    "tags": ["testing", "MCP", "memory"],
+    "pricing": "free",
+    "featured": false
   }
 ]

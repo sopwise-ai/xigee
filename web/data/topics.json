@@ -11,7 +11,7 @@
     "name": "开发工具",
     "icon": "💻",
     "description": "AI 编程编辑器、代码补全、调试与代码审查工具。",
-    "toolCount": 452
+    "toolCount": 453
   },
   {
     "id": "model-provider",
@@ -39,7 +39,7 @@
     "name": "智能体 / Agents",
     "icon": "🧩",
     "description": "AI Agent 编排、记忆与多智能体工具。",
-    "toolCount": 57
+    "toolCount": 58
   },
   {
     "id": "llm",
