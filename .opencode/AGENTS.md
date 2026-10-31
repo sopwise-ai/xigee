@@ -93,6 +93,7 @@ cd studio && make test ALLOW_SHARED_DB=1                # 默认 dev 是共享�
 - pricing: free / freemium / paid; 是否开源是独立字段 `is_open_source`
 - 新增必填字段: `tagline` / `origin`(cn|overseas) / `access`(direct|proxy) / `languages`(ISO 639-1 数组, 1~8 项)
 - 字段上限 (写入端 422 拦截): `slug` ≤64 且为 kebab (`^[a-z0-9]+(?:-[a-z0-9]+)*$`); 工具 `name` ≤128 / 主题 `name` ≤64, 均非空白; `tagline` 必填 ≤100 且**句末必须是标点**; `description` ≤500 可空; `url` ≤2048
+- 主题/工具 `slug` 是对外主键 + URL 片段, **一律不加 `ai-` 前缀**, 直接用语义英文词 (`image-generation` 而非 `ai-image-generation`), 创建后不再更改
 - `tags` ≤8 个, 单个 ≤32 字符, 不可重复/为空/首尾带空白; `languages` 1~8 项, 两字母小写 ISO 639-1, 不可重复
 - `description` 为 NULL 时导出物**省略该键** (不是输出 null)
 - 工具的主题归属用 `topic_ids: [int]` + 可选 `primary_topic_id` (后者必须在 `topic_ids` 里)

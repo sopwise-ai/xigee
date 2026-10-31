@@ -104,8 +104,10 @@ function CollapseToggle() {
       variant="ghost"
       size="icon-sm"
       onClick={toggle}
-      aria-label="收起侧边栏"
-      title="收起侧边栏"
+      aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}
+      aria-expanded={!collapsed}
+      aria-controls="site-sidebar"
+      title={collapsed ? "展开侧边栏" : "收起侧边栏"}
       className="-mr-1 shrink-0 rounded-full text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground"
     >
       <PanelIcon className="size-4" />
@@ -286,6 +288,7 @@ function SidebarLink({ href, active, collapsed, label, icon, count }: SidebarLin
   const link = (
     <Link
       href={href}
+      prefetch={false}
       aria-current={active ? "page" : undefined}
       className={cn(
         "group relative flex w-full items-center gap-3 rounded-md py-1.5 pl-3 pr-2 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring",

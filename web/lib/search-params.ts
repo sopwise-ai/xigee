@@ -1,4 +1,4 @@
-import { ArrowDownAZ, Clock, Sparkles, type LucideIcon } from "lucide-react"
+import { ArrowDownAZ, Sparkles, type LucideIcon } from "lucide-react"
 
 /** 搜索结果排序维度。 */
 export type SearchSort = "relevance" | "latest" | "name"
@@ -10,12 +10,11 @@ export interface SearchSortOption {
 }
 
 /**
- * 排序选项：默认「相关度」（Fuse 打分序），另给「最新」与「名称」——
- * 目录类站点里「最近收录」是仅次于相关度的真实需求，而名称序便于按字母核对。
+ * 排序选项：默认「相关度」（Fuse 打分序），另给「名称」。
+ * 「最新」已下线：当前数据没有真实发布时间，按日期排等价于名称序。
  */
 export const SEARCH_SORT_OPTIONS: readonly SearchSortOption[] = [
   { value: "relevance", label: "相关度", icon: Sparkles },
-  { value: "latest", label: "最新", icon: Clock },
   { value: "name", label: "名称 A-Z", icon: ArrowDownAZ },
 ]
 
@@ -29,6 +28,33 @@ export function isSearchSort(value: string | null): value is SearchSort {
 export interface SearchUrlState {
   query: string
   sort: SearchSort
+}
+
+/** 搜索结果 facets：主题 / 价格 / 只看精选。空串表示不筛。 */
+export interface SearchFacets {
+  topic: string
+  pricing: string
+  featured: boolean
+}
+
+export const SEARCH_PRICING_OPTIONS = [
+  { value: "", label: "全部价格" },
+  { value: "free", label: "免费" },
+  { value: "freemium", label: "免费增值" },
+  { value: "paid", label: "付费" },
+  { value: "opensource", label: "开源" },
+] as const
+
+const VALID_PRICING = new Set<string>(SEARCH_PRICING_OPTIONS.map((option) => option.value))
+
+/** 从 URL 读取 facets；未知价格回退「全部价格」。 */
+export function readSearchFacets(params: SearchParamsLike): SearchFacets {
+  const pricing = params.get("pricing") ?? ""
+  return {
+    topic: params.get("topic") ?? "",
+    pricing: VALID_PRICING.has(pricing) ? pricing : "",
+    featured: params.get("featured") === "1",
+  }
 }
 
 /** 只需要「能按 key 取值」：Next 的 ReadonlyURLSearchParams 也满足。 */

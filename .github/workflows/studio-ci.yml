@@ -76,7 +76,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           # 固定 uv 版本而不是跟随 latest: 本作业是 required check,
           # 不能因为上游工具换版本就无故变红(与 workflow-lint.yml 装 shellcheck 同一理由)。

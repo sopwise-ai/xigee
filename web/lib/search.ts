@@ -38,9 +38,9 @@ export function buildSearchDocs(
 /**
  * 顶栏建议（搜索建议下拉）用的精简文档。
  *
- *刻意不带 `description`：它占了工具数据的四成体积，而下拉只展示「名称 + 主题 + 域名」。
- * 实测 85 条 `SuggestionDoc` ≈ 12KB raw / **3.2KB gzip**（带 description 的全量 SearchDoc 是 6.6KB gzip），
- * 由根布局一次性下发，因此顶栏建议**零网络往返**——这正是旧版「每次换词都要跑一趟服务器」的反面。
+ * `description` 只作为检索兜底（中文短词常只出现在描述里），不展示、也不影响下拉体积：
+ * 建议索引只在服务端构建（`lib/catalog.ts`），客户端按查询走 `/api/suggest`，
+ * 每次最多返回 6 条，不随根布局下发 6000+ 条索引。
  */
 export interface SuggestionDoc {
   id: string
@@ -49,6 +49,8 @@ export interface SuggestionDoc {
   topics: string[]
   topicNames: string[]
   tags?: string[]
+  /** 只用于检索：中文常见词（代码/图片/聊天）往往只出现在描述里，不展示。 */
+  description?: string
   /** 与 Tool 同源，供 data-history-* 记录访问历史（见 toolHistoryAttrs）。 */
   pricing?: Tool["pricing"]
 }
@@ -65,6 +67,7 @@ export function buildSuggestionDocs(
     topics: t.topics,
     topicNames: t.topics.map((id) => topicNames[id]).filter((name): name is string => Boolean(name)),
     tags: t.tags,
+    description: t.description,
     pricing: t.pricing,
   }))
 }
@@ -75,7 +78,7 @@ export const SUGGEST_LIMIT = 6
 /** 建议索引按「数据数组身份」缓存：布局每次渲染传的是同一数组，索引只在首建时付一次代价。 */
 const suggestionIndexCache = new WeakMap<readonly SuggestionDoc[], Fuse<SuggestionDoc>>()
 
-/** 取（必要时构建）建议索引。服务端首建、客户端命中缓存，顶栏每次挂载不再重建。 */
+/** 取（必要时构建）建议索引。只在服务端使用；按数组身份缓存，避免每次请求重建。 */
 export function getSuggestionIndex(docs: readonly SuggestionDoc[]): Fuse<SuggestionDoc> {
   const cached = suggestionIndexCache.get(docs)
   if (cached) return cached
@@ -92,10 +95,13 @@ export function createSuggestionIndex(docs: readonly SuggestionDoc[]): Fuse<Sugg
   return new Fuse([...docs], {
     keys: [
       { name: "name", weight: 0.5 },
-      { name: "tags", weight: 0.3 },
-      { name: "topicNames", weight: 0.2 },
+      { name: "tags", weight: 0.25 },
+      { name: "topicNames", weight: 0.15 },
+      // 描述只做兜底：中文短词常常只出现在描述里；权重压低避免正文噪声盖过名称命中。
+      { name: "description", weight: 0.1 },
     ],
-    threshold: resolveThreshold(),
+    // 建议是「边打边看」，宁可多给几条也别出现「输入常见词却 0 条」。
+    threshold: Math.min(1, resolveThreshold() + 0.12),
     ignoreLocation: true,
     includeScore: true,
   })

@@ -26,6 +26,9 @@ const nextConfig: NextConfig = {
       "style-src 'self' 'unsafe-inline'",
       `script-src ${scriptSrc}`,
       "connect-src 'self'",
+      "worker-src 'self'",
+      "manifest-src 'self'",
+      "object-src 'none'",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
@@ -41,6 +44,23 @@ const nextConfig: NextConfig = {
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
           { key: "Content-Security-Policy", value: csp },
         ],
+      },
+      // 图标/生成的 PNG 带内容哈希查询串，可安全长缓存；manifest 一年太长，按小时回源。
+      {
+        source: "/icon/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
+      {
+        source: "/apple-icon",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
+      {
+        source: "/sw.js",
+        headers: [{ key: "Cache-Control", value: "public, max-age=0, must-revalidate" }],
+      },
+      {
+        source: "/manifest.webmanifest",
+        headers: [{ key: "Cache-Control", value: "public, max-age=3600, stale-while-revalidate=86400" }],
       },
     ]
   },

@@ -18,6 +18,10 @@ interface SearchSuggestionsProps {
   query: string
   activeIndex: number
   listboxId: string
+  /** 当前输入是否已拿到响应；false 时显示「正在搜索建议」。 */
+  settled?: boolean
+  /** 点「查看全部结果」或按 Enter 时调用。 */
+  onViewAll?: () => void
   className?: string
 }
 
@@ -33,14 +37,22 @@ interface SearchSuggestionsProps {
  * 而点击 `<li>` 不会激活它内部的链接 —— 挂错位置会让回车静默失效。
  * 同理 listbox 用 `<div>` 而不是 `<ul>`，让 option 成为它的直接子元素。
  */
-export function SearchSuggestions({ items, query, activeIndex, listboxId, className }: SearchSuggestionsProps) {
+export function SearchSuggestions({
+  items,
+  query,
+  activeIndex,
+  listboxId,
+  settled = true,
+  onViewAll,
+  className,
+}: SearchSuggestionsProps) {
   // 选中项滚进可视区：条数少，直接查 DOM 即可，不必为它再挂一层 ref 列表
   useEffect(() => {
     if (activeIndex < 0) return
     document.getElementById(suggestionOptionId(listboxId, activeIndex))?.scrollIntoView({ block: "nearest" })
   }, [activeIndex, listboxId])
 
-  if (items.length === 0) return null
+  const empty = items.length === 0
 
   return (
     <div
@@ -50,34 +62,46 @@ export function SearchSuggestions({ items, query, activeIndex, listboxId, classN
       )}
     >
       <div id={listboxId} role="listbox" aria-label="搜索建议" className="max-h-72 overflow-y-auto p-1">
-        {items.map((item, i) => {
-          const active = i === activeIndex
-          const topic = item.topicNames[0]
-          return (
-            <a
-              key={item.id}
-              id={suggestionOptionId(listboxId, i)}
-              role="option"
-              aria-selected={active}
-              href={item.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              // 建议是「预览」，回车的默认动作仍是进结果页；选中后回车由 SearchField 触发 click
-              tabIndex={-1}
-              {...toolHistoryAttrs(item)}
-              className={cn(
-                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none",
-                active ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
-              )}
-            >
-              <span className="min-w-0 flex-1 truncate font-medium">
-                <Highlighted text={item.name} query={query} variant="tint" />
-              </span>
-              {topic && <span className="shrink-0 text-xs text-muted-foreground">{topic}</span>}
-              <span className="shrink-0 font-data text-xs text-muted-foreground">{getDomain(item.url)}</span>
-            </a>
-          )
-        })}
+        {empty ? (
+          <p role="status" className="px-2 py-3 text-sm text-muted-foreground">
+            {settled ? (
+              <>
+                没有匹配建议，按 <Kbd>Enter</Kbd> 直接搜索「{query}」
+              </>
+            ) : (
+              <>正在搜索建议…</>
+            )}
+          </p>
+        ) : (
+          items.map((item, i) => {
+            const active = i === activeIndex
+            const topic = item.topicNames[0]
+            return (
+              <a
+                key={item.id}
+                id={suggestionOptionId(listboxId, i)}
+                role="option"
+                aria-selected={active}
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                // 建议是「预览」，回车的默认动作仍是进结果页；选中后回车由 SearchField 触发 click
+                tabIndex={-1}
+                {...toolHistoryAttrs(item)}
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none",
+                  active ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
+                )}
+              >
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  <Highlighted text={item.name} query={query} variant="tint" />
+                </span>
+                {topic && <span className="shrink-0 text-xs text-muted-foreground">{topic}</span>}
+                <span className="shrink-0 font-data text-xs text-muted-foreground">{getDomain(item.url)}</span>
+              </a>
+            )
+          })
+        )}
       </div>
       <div className="flex items-center justify-between border-t border-border px-2.5 py-1.5 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
@@ -87,9 +111,20 @@ export function SearchSuggestions({ items, query, activeIndex, listboxId, classN
           </KbdGroup>
           选择
         </span>
-        <span className="flex items-center gap-1">
-          <Kbd>⏎</Kbd>
-          {activeIndex >= 0 ? "打开" : "查看全部结果"}
+        <span className="flex items-center gap-2">
+          {activeIndex >= 0 && (
+            <span className="flex items-center gap-1">
+              <Kbd>⏎</Kbd>
+              打开
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={onViewAll}
+            className="rounded px-1 py-0.5 underline-offset-4 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            查看全部结果
+          </button>
         </span>
       </div>
     </div>

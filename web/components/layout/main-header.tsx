@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
+import { Suspense, useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import Link from "next/link"
 import { Search, Settings, X } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
@@ -11,13 +11,8 @@ import { Kbd } from "@/components/ui/kbd"
 import ThemeToggle from "@/components/layout/theme-toggle"
 import { SearchSuggestions, suggestionOptionId } from "@/components/search/search-suggestions"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
-import {
-  getSuggestionIndex,
-  suggest,
-  SEARCH_FOCUS_RESULTS_EVENT,
-  SEARCH_RESULT_SELECTOR,
-  type SuggestionDoc,
-} from "@/lib/search"
+import { SEARCH_FOCUS_RESULTS_EVENT, SEARCH_RESULT_SELECTOR, type SuggestionDoc } from "@/lib/search"
+import { MAX_SEARCH_QUERY_LENGTH } from "@/lib/search-limits"
 import { searchPageHref, writeSearchQuery } from "@/lib/url"
 import type { Topic } from "@/lib/types"
 
@@ -57,11 +52,6 @@ function QuerySync({
   return null
 }
 
-interface SearchFieldProps {
-  /** 顶栏建议数据：由根布局（server）下发，客户端零请求即可出建议。 */
-  suggestions: readonly SuggestionDoc[]
-}
-
 /**
  * 主区顶栏搜索框：全站按 `/` 聚焦（非输入态）。
  *
@@ -71,7 +61,7 @@ interface SearchFieldProps {
  * - **`<form action="/search">` 兜底**：hydration 完成前（首屏 3 秒级）按回车走原生 GET
  *   提交跳到 `/search?q=…`，而不是像旧版那样毫无反应。
  */
-function SearchField({ suggestions }: SearchFieldProps) {
+function SearchField() {
   const inputRef = useRef<HTMLInputElement>(null)
   const rootRef = useRef<HTMLFormElement>(null)
   const router = useRouter()
@@ -92,17 +82,37 @@ function SearchField({ suggestions }: SearchFieldProps) {
 
   const isSearchPage = pathname === "/search"
   const deferred = useDebouncedValue(draft, SEARCH_DEBOUNCE_MS)
+  const [suggestions, setSuggestions] = useState<{ query: string; items: readonly SuggestionDoc[] }>({
+    query: "",
+    items: [],
+  })
 
-  // 建议索引按数据身份缓存：布局每次渲染拿到的是同一数组，索引只建一次
-  const suggestionIndex = useMemo(() => getSuggestionIndex(suggestions), [suggestions])
-  // 建议不吃防抖：Fuse 对百来条数据是亚毫秒级，直接给即时反馈
-  const items = useMemo(
-    () => (isSearchPage ? [] : suggest(suggestionIndex, draft)),
-    [isSearchPage, suggestionIndex, draft],
-  )
+  // 建议按查询串走 API：根布局不再下发 6000+ 条索引，首访每个页面都能少约 170KB(gzip)。
+  // 用与「边打边搜」相同的防抖，既保留即时感，也避免每个按键都打一次 Fuse。
+  useEffect(() => {
+    if (isSearchPage || !focused || !deferred.trim()) return
+    const controller = new AbortController()
+    fetch(`/api/suggest?q=${encodeURIComponent(deferred)}`, { signal: controller.signal })
+      .then((response) => (response.ok ? (response.json() as Promise<SuggestionDoc[]>) : []))
+      .then((next) => setSuggestions({ query: deferred, items: next }))
+      .catch(() => {
+        /* 建议是增强功能：失败时按「无建议」处理，输入与提交不受影响 */
+        if (!controller.signal.aborted) setSuggestions({ query: deferred, items: [] })
+      })
+    return () => controller.abort()
+  }, [deferred, focused, isSearchPage])
+
+  // 只展示与当前输入匹配的那一批，避免上一轮请求的结果短暂串台。
+  const items = suggestions.query === draft ? suggestions.items : []
 
   const listboxId = "search-suggestions"
-  const open = focused && !dismissed && items.length > 0
+  const settled = suggestions.query === draft
+  /**
+   * 有响应才开：加载中不弹「正在搜索」空层，避免每个按键闪一下；
+   * 响应为空时也要开，给「没有匹配建议 / 查看全部」的反馈，而不是静默无响应。
+   * 搜索页不弹：结果已经在下方实时更新，再来一份下拉是重复信息。
+   */
+  const open = !isSearchPage && focused && !dismissed && draft.trim().length > 0 && (items.length > 0 || settled)
   const activeIndex = active.query === draft && active.index >= 0 && active.index < items.length ? active.index : -1
 
   const moveActive = (delta: number) => {
@@ -170,6 +180,9 @@ function SearchField({ suggestions }: SearchFieldProps) {
   /** 提交搜索：搜索页原地定格 URL（不等防抖、不发请求），其它页才做一次客户端跳转。 */
   const submitSearch = () => {
     const trimmed = inputRef.current?.value.trim() ?? ""
+    // 提交即收起：客户端跳转不会重挂主区顶栏，不显式关闭会把建议浮层带进结果页。
+    setFocused(false)
+    setDismissed(true)
     if (isSearchPage) {
       writeSearchQuery(trimmed, pathname, window.location.search)
       return
@@ -269,6 +282,7 @@ function SearchField({ suggestions }: SearchFieldProps) {
           ref={inputRef}
           name="q"
           type="search"
+          maxLength={MAX_SEARCH_QUERY_LENGTH}
           enterKeyHint="search"
           role="combobox"
           aria-label="搜索 AI 工具"
@@ -311,7 +325,16 @@ function SearchField({ suggestions }: SearchFieldProps) {
           )}
         </InputGroupAddon>
       </InputGroup>
-      {open && <SearchSuggestions items={items} query={draft} activeIndex={activeIndex} listboxId={listboxId} />}
+      {open && (
+        <SearchSuggestions
+          items={items}
+          query={draft}
+          activeIndex={activeIndex}
+          listboxId={listboxId}
+          settled={settled}
+          onViewAll={submitSearch}
+        />
+      )}
     </form>
   )
 }
@@ -327,23 +350,23 @@ function resolveCrumbs(pathname: string, topics: readonly Topic[]): Crumb[] {
     const name = topics.find((c) => c.id === id)?.name
     return name ? [{ label: "全部工具", href: "/" }, { label: name }] : [{ label: "全部工具", href: "/" }]
   }
+  if (pathname === "/") return [{ label: "全部工具" }]
   if (pathname === "/search") return [{ label: "搜索" }]
   if (pathname === "/history") return [{ label: "历史记录" }]
   if (pathname === "/settings") return [{ label: "设置" }]
   if (pathname === "/about") return [{ label: "关于" }]
   if (pathname === "/privacy") return [{ label: "隐私政策" }]
   if (pathname === "/terms") return [{ label: "服务条款" }]
-  return [{ label: "全部工具" }]
+  return [{ label: "页面未找到" }]
 }
 
 interface MainHeaderProps {
   className?: string
   topics: readonly Topic[]
-  suggestions: readonly SuggestionDoc[]
 }
 
 /** 主区顶栏：左侧路由面包屑，右侧搜索 + 设置/主题入口。 */
-export function MainHeader({ className, topics, suggestions }: MainHeaderProps) {
+export function MainHeader({ className, topics }: MainHeaderProps) {
   const pathname = usePathname()
   const crumbs = resolveCrumbs(pathname, topics)
 
@@ -374,7 +397,7 @@ export function MainHeader({ className, topics, suggestions }: MainHeaderProps) 
             })}
           </ol>
         </nav>
-        <SearchField suggestions={suggestions} />
+        <SearchField />
         <Button variant="outline" size="icon" aria-label="设置" title="设置" render={<Link href="/settings" />}>
           <Settings />
         </Button>

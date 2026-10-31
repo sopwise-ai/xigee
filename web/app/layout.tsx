@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next"
-import "@fontsource-variable/outfit"
-import { getAllTopics, getAllTools, getTopicCounts, getStats } from "@/lib/data"
-import { buildSuggestionDocs } from "@/lib/search"
+import localFont from "next/font/local"
+import { getAllTopics, getTopicCounts, getStats } from "@/lib/data"
 import { getBaseUrl } from "@/lib/utils"
 import { pageShell } from "@/lib/layout"
 import { BRAND_PAGE } from "@/lib/brand"
@@ -11,19 +10,26 @@ import { SubNav } from "@/components/layout/sub-nav"
 import { Sidebar } from "@/components/layout/sidebar"
 import { MainHeader } from "@/components/layout/main-header"
 import { HistoryTracker } from "@/components/runtime/history-tracker"
+import { PwaRegister } from "@/components/runtime/pwa-register"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import Footer from "@/components/layout/footer"
 import "./globals.css"
 
+const outfit = localFont({
+  src: "./fonts/outfit-latin.woff2",
+  weight: "100 900",
+  style: "normal",
+  display: "swap",
+  variable: "--font-outfit",
+  preload: true,
+  fallback: ["system-ui", "sans-serif"],
+})
+
 const allTopics = getAllTopics()
 const topicCounts = getTopicCounts()
 const totalTools = getStats().tools
-
-/**
- * 顶栏搜索建议数据（不含 description，见 `SuggestionDoc`）：随根布局一次性下发，
- * 顶栏出建议就不用再跑一趟服务器 —— 这是「边打边搜 + 建议下拉」零往返的前提。
- */
-const suggestions = buildSuggestionDocs(getAllTools(), Object.fromEntries(allTopics.map((c) => [c.id, c.name])))
+// 0 工具的主题（如「未分类」）不进导航：点进去只会得到空页
+const navTopics = allTopics.filter((topic) => (topicCounts[topic.id] ?? 0) > 0)
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -52,6 +58,11 @@ export const metadata: Metadata = {
   title: { default: "XiGee — 精选 AI 工具目录", template: "%s — XiGee" },
   description: "XiGee 精选值得用的 AI 工具，人工筛选、主题清晰，点击直达官方网站。",
   keywords: ["AI", "AI工具", "人工智能", "AI导航", "AI目录", "AI工具目录", "XiGee"],
+  appleWebApp: {
+    capable: true,
+    title: "XiGee",
+    statusBarStyle: "default",
+  },
   openGraph: {
     title: "XiGee — 精选 AI 工具目录",
     description: "精选值得用的 AI 工具，每一款都经过人工筛选，点击直达官方网站。",
@@ -100,7 +111,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="zh-CN" className="h-full antialiased" suppressHydrationWarning>
+    <html lang="zh-CN" className={`${outfit.variable} h-full antialiased`} suppressHydrationWarning>
       <head>
         <meta name="theme-color" content={BRAND_PAGE.light} />
         {/* 必须最先执行：同步内联脚本，早于首绘应用主题 / 侧栏 / 工具偏好的首帧状态 */}
@@ -109,6 +120,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col pb-[env(safe-area-inset-bottom)] md:h-[100dvh] md:overflow-hidden">
         <HistoryTracker />
+        <PwaRegister />
         <TooltipProvider>
           <a
             href="#main"
@@ -117,18 +129,22 @@ export default function RootLayout({
             跳到主要内容
           </a>
           {/* 首帧偏好由 <head> 内联 prefsScript 在首绘前写入 <html>，此处不再使用 next/script */}
-          <Header className="md:hidden" />
-          <SubNav className="md:hidden" topics={allTopics} />
+          <Header className="md:hidden" topics={navTopics} topicCounts={topicCounts} totalTools={totalTools} />
+          <SubNav className="md:hidden" topics={navTopics} />
           {/* DSH 双表面骨架：左栏灰（sidebar）/ 右区白（main） */}
           <div className="flex flex-1 md:overflow-hidden">
-            <Sidebar topics={allTopics} topicCounts={topicCounts} totalTools={totalTools} />
+            <Sidebar topics={navTopics} topicCounts={topicCounts} totalTools={totalTools} />
             <div className="flex min-w-0 flex-1 flex-col bg-background md:overflow-hidden">
-              <MainHeader className="hidden md:block" topics={allTopics} suggestions={suggestions} />
+              <MainHeader className="hidden md:block" topics={allTopics} />
               <div
                 id="scroll-container"
                 className="flex flex-1 scroll-smooth flex-col scroll-pt-28 md:min-h-0 md:overflow-y-auto"
               >
-                <main id="main" className={pageShell("browse", "scroll-mt-16 px-4 py-6 sm:px-6 flex-1")}>
+                <main
+                  id="main"
+                  tabIndex={-1}
+                  className={pageShell("browse", "scroll-mt-16 px-4 py-6 sm:px-6 flex-1 outline-none")}
+                >
                   {children}
                 </main>
                 <Footer />

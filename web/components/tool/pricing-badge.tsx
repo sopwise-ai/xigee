@@ -7,7 +7,7 @@ export interface PricingStyle {
   dotClass: string
 }
 
-/** 价格 → 状态徽章（语义色：免费绿 / 免费+付费蓝 / 付费琥珀 / 开源紫） */
+/** 价格 → 状态徽章（语义色：免费绿 / 免费增值蓝 / 付费琥珀 / 开源紫） */
 export const pricingStyles: Record<Pricing, PricingStyle> = {
   free: {
     label: "免费",
@@ -15,7 +15,7 @@ export const pricingStyles: Record<Pricing, PricingStyle> = {
     dotClass: "bg-price-free",
   },
   freemium: {
-    label: "免费+付费",
+    label: "免费增值",
     className: "bg-price-freemium/10 text-price-freemium border-price-freemium/20",
     dotClass: "bg-price-freemium",
   },

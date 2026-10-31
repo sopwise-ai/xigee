@@ -1,122 +1,345 @@
 [
   {
-    "id": "chat-assistant",
+    "id": "chat",
     "name": "对话助手",
     "icon": "💬",
-    "toolCount": 7
+    "description": "通用大模型对话助手与智能聊天产品。",
+    "toolCount": 121
   },
   {
-    "id": "image-generation",
-    "name": "图像生成",
-    "icon": "🖼️",
-    "toolCount": 7
-  },
-  {
-    "id": "code-tools",
-    "name": "代码工具",
+    "id": "developer-tools",
+    "name": "开发工具",
     "icon": "💻",
-    "toolCount": 8
+    "description": "AI 编程编辑器、代码补全、调试与代码审查工具。",
+    "toolCount": 453
   },
   {
-    "id": "writing-tools",
-    "name": "写作工具",
-    "icon": "✍️",
-    "toolCount": 5
-  },
-  {
-    "id": "video-tools",
-    "name": "视频工具",
-    "icon": "🎬",
-    "toolCount": 5
-  },
-  {
-    "id": "audio-tools",
-    "name": "音频工具",
-    "icon": "🎵",
-    "toolCount": 5
+    "id": "model-provider",
+    "name": "模型提供商",
+    "icon": "🔌",
+    "description": "提供大模型 API、推理服务的厂商、托管平台与聚合网关。",
+    "toolCount": 26
   },
   {
     "id": "productivity",
-    "name": "效率工具",
+    "name": "办公与生产力",
     "icon": "⚡",
+    "description": "笔记、文档与效率提升工具。",
+    "toolCount": 764
+  },
+  {
+    "id": "skills",
+    "name": "技能 / Skills",
+    "icon": "🧰",
+    "description": "可复用的 Agent 技能与能力扩展包。",
+    "toolCount": 6
+  },
+  {
+    "id": "agents",
+    "name": "智能体 / Agents",
+    "icon": "🧩",
+    "description": "AI Agent 编排、记忆与多智能体工具。",
+    "toolCount": 58
+  },
+  {
+    "id": "llm",
+    "name": "大语言模型 / LLMs",
+    "icon": "🧠",
+    "description": "基于海量文本训练，能理解上下文并生成类人文本，擅长问答、摘要、翻译与创作。",
+    "toolCount": 15
+  },
+  {
+    "id": "mcp",
+    "name": "MCP 与集成",
+    "icon": "🔗",
+    "description": "模型上下文协议 (MCP) 服务器与工具集成。",
+    "toolCount": 10
+  },
+  {
+    "id": "prompt",
+    "name": "提示词 / Prompts",
+    "icon": "💡",
+    "description": "提示词编写、管理与分享工具。",
+    "toolCount": 53
+  },
+  {
+    "id": "writing",
+    "name": "文本生成与编辑",
+    "icon": "✍️",
+    "description": "文案创作、润色与内容生成工具。",
+    "toolCount": 516
+  },
+  {
+    "id": "image-generation",
+    "name": "图像生成与编辑",
+    "icon": "🖼️",
+    "description": "文生图、图生图与图像编辑工具。",
+    "toolCount": 540
+  },
+  {
+    "id": "video-generation",
+    "name": "视频生成与编辑",
+    "icon": "🎬",
+    "description": "文生视频、数字人与视频编辑工具。",
+    "toolCount": 490
+  },
+  {
+    "id": "music",
+    "name": "音乐与音效",
+    "icon": "🎵",
+    "description": "AI 作曲、音乐生成与音效工具。",
+    "toolCount": 222
+  },
+  {
+    "id": "speech",
+    "name": "语音生成与转换",
+    "icon": "🎙️",
+    "description": "语音合成、配音与音频处理工具。",
+    "toolCount": 272
+  },
+  {
+    "id": "image-analysis",
+    "name": "图像识别与分析",
+    "icon": "👁️",
+    "description": "OCR、人脸识别与图像内容理解工具。",
+    "toolCount": 146
+  },
+  {
+    "id": "avatar",
+    "name": "头像与数字分身",
+    "icon": "👤",
+    "description": "AI 头像、写真与数字分身工具。",
+    "toolCount": 41
+  },
+  {
+    "id": "podcast",
+    "name": "播客",
+    "icon": "🎧",
+    "description": "播客生成、剪辑与分发工具。",
+    "toolCount": 34
+  },
+  {
+    "id": "search",
+    "name": "智能搜索",
+    "icon": "🔍",
+    "description": "AI 搜索与信息获取工具。",
+    "toolCount": 26
+  },
+  {
+    "id": "workflow",
+    "name": "工作流",
+    "icon": "🔄",
+    "description": "自动化与无代码集成平台。",
+    "toolCount": 24
+  },
+  {
+    "id": "robotics",
+    "name": "具身智能 / 机器人",
+    "icon": "🦾",
+    "description": "具身智能与机器人控制工具。",
     "toolCount": 5
   },
   {
-    "id": "data-analysis",
-    "name": "数据分析",
-    "icon": "📊",
-    "toolCount": 5
+    "id": "content-detection",
+    "name": "内容检测与鉴伪",
+    "icon": "🕵️",
+    "description": "AI 内容检测与真假鉴别工具。",
+    "toolCount": 153
   },
   {
-    "id": "design-tools",
-    "name": "设计工具",
+    "id": "companion",
+    "name": "情感陪伴",
+    "icon": "💗",
+    "description": "角色扮演、虚拟陪伴与情感互动工具。",
+    "toolCount": 70
+  },
+  {
+    "id": "anime-comic",
+    "name": "动漫 / 二次元",
+    "icon": "🍥",
+    "description": "动漫、漫画与二次元风格创作工具。",
+    "toolCount": 19
+  },
+  {
+    "id": "design",
+    "name": "艺术与创意设计",
     "icon": "🎨",
-    "toolCount": 5
+    "description": "AI 绘画、平面设计与创意视觉工具。",
+    "toolCount": 627
+  },
+  {
+    "id": "3d-modeling",
+    "name": "3D 建模",
+    "icon": "🧊",
+    "description": "3D 模型生成与渲染工具。",
+    "toolCount": 24
+  },
+  {
+    "id": "website-builder",
+    "name": "网站与落地页",
+    "icon": "🖥️",
+    "description": "无代码建站、落地页与官网生成工具。",
+    "toolCount": 65
+  },
+  {
+    "id": "presentation",
+    "name": "演示文稿",
+    "icon": "📽️",
+    "description": "幻灯片、PPT 与路演稿生成工具。",
+    "toolCount": 56
+  },
+  {
+    "id": "meeting",
+    "name": "会议与转录",
+    "icon": "📝",
+    "description": "会议记录、语音转写与纪要工具。",
+    "toolCount": 72
+  },
+  {
+    "id": "marketing",
+    "name": "商业营销与广告",
+    "icon": "📣",
+    "description": "SEO、广告创意与内容营销工具。",
+    "toolCount": 568
+  },
+  {
+    "id": "email",
+    "name": "邮件",
+    "icon": "📧",
+    "description": "邮件撰写、回复与智能邮箱工具。",
+    "toolCount": 66
+  },
+  {
+    "id": "ecommerce",
+    "name": "电商与商品",
+    "icon": "🛒",
+    "description": "商品图、商品文案与店铺运营工具。",
+    "toolCount": 58
+  },
+  {
+    "id": "social-media",
+    "name": "社交媒体",
+    "icon": "📱",
+    "description": "社媒发布、排期与多平台运营工具。",
+    "toolCount": 354
+  },
+  {
+    "id": "business-management",
+    "name": "企业管理",
+    "icon": "🏢",
+    "description": "CRM、销售与客户管理工具。",
+    "toolCount": 332
+  },
+  {
+    "id": "recruiting",
+    "name": "求职与招聘",
+    "icon": "💼",
+    "description": "简历优化、面试准备与招聘筛选工具。",
+    "toolCount": 206
+  },
+  {
+    "id": "business-research",
+    "name": "商业研究",
+    "icon": "🧭",
+    "description": "市场、竞品与行业情报调研工具。",
+    "toolCount": 128
+  },
+  {
+    "id": "customer-support",
+    "name": "智能客服",
+    "icon": "🤖",
+    "description": "客服机器人、知识库问答与工单系统。",
+    "toolCount": 82
+  },
+  {
+    "id": "legal",
+    "name": "法律",
+    "icon": "⚖️",
+    "description": "法律检索、合同审查与文书起草助手。",
+    "toolCount": 78
+  },
+  {
+    "id": "finance",
+    "name": "财务",
+    "icon": "📈",
+    "description": "理财、记账与财务自动化工具。",
+    "toolCount": 163
+  },
+  {
+    "id": "health",
+    "name": "医疗与健康",
+    "icon": "🩺",
+    "description": "症状评估、健康咨询与医疗辅助工具。",
+    "toolCount": 106
   },
   {
     "id": "education",
     "name": "教育学习",
     "icon": "🎓",
-    "toolCount": 5
-  },
-  {
-    "id": "marketing",
-    "name": "营销工具",
-    "icon": "📣",
-    "toolCount": 3
+    "description": "AI 学习辅导与个性化教育产品。",
+    "toolCount": 391
   },
   {
     "id": "translation",
-    "name": "翻译工具",
+    "name": "翻译与本地化",
     "icon": "🌐",
-    "toolCount": 3
+    "description": "机器翻译与内容本地化工具。",
+    "toolCount": 100
   },
   {
-    "id": "research",
-    "name": "研究工具",
+    "id": "data-analysis",
+    "name": "数据分析",
+    "icon": "📊",
+    "description": "数据洞察、分析与可视化工具。",
+    "toolCount": 130
+  },
+  {
+    "id": "academic-research",
+    "name": "学术科研",
     "icon": "🔬",
-    "toolCount": 3
+    "description": "文献检索、论文阅读与研究助手。",
+    "toolCount": 42
   },
   {
-    "id": "automation",
-    "name": "自动化",
-    "icon": "⚙️",
-    "toolCount": 4
+    "id": "interior-design",
+    "name": "室内与建筑设计",
+    "icon": "🛋️",
+    "description": "户型、装修、景观与空间设计工具。",
+    "toolCount": 79
   },
   {
-    "id": "chatbot",
-    "name": "客服机器人",
-    "icon": "🤖",
-    "toolCount": 3
+    "id": "fashion",
+    "name": "时尚穿搭",
+    "icon": "👗",
+    "description": "穿搭推荐、虚拟试衣与时尚设计工具。",
+    "toolCount": 13
   },
   {
-    "id": "3d-tools",
-    "name": "3D 工具",
-    "icon": "🧊",
-    "toolCount": 3
-  },
-  {
-    "id": "legal",
-    "name": "法律工具",
-    "icon": "⚖️",
-    "toolCount": 2
-  },
-  {
-    "id": "finance",
-    "name": "金融工具",
-    "icon": "📈",
-    "toolCount": 3
-  },
-  {
-    "id": "health",
-    "name": "医疗健康",
-    "icon": "🩺",
-    "toolCount": 3
+    "id": "daily-life",
+    "name": "日常生活",
+    "icon": "☕",
+    "description": "旅行、食谱、购物与日常事务工具。",
+    "toolCount": 285
   },
   {
     "id": "gaming",
     "name": "游戏娱乐",
     "icon": "🎮",
-    "toolCount": 3
+    "description": "游戏资产生成、NPC 角色与游戏 AI 工具。",
+    "toolCount": 75
+  },
+  {
+    "id": "other",
+    "name": "其他",
+    "icon": "🗂️",
+    "description": "用途多样、不便归入具体主题的 AI 工具。",
+    "toolCount": 80
+  },
+  {
+    "id": "misc",
+    "name": "未分类",
+    "icon": "📦",
+    "description": "尚未归类，待整理到合适主题下。",
+    "toolCount": 0
   }
 ]

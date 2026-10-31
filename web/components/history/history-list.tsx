@@ -231,7 +231,7 @@ export function HistoryList({ topics }: HistoryListProps) {
 
   if (items.length === 0) {
     return (
-      <Empty className="rounded-lg border bg-card py-8">
+      <Empty role="status" className="rounded-lg border bg-card py-8">
         <EmptyMedia variant="icon" className="size-12 rounded-xl border [&_svg:not([class*='size-'])]:size-6">
           <Clock />
         </EmptyMedia>

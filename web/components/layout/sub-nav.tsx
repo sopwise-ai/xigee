@@ -43,6 +43,7 @@ export function SubNav({ className, topics }: SubNavProps) {
         <div ref={scrollRef} className="no-scrollbar -ml-1 flex items-center gap-1 overflow-x-auto py-2 pr-8 pl-1">
           <Link
             href="/"
+            prefetch={false}
             aria-current={pathname === "/" ? "page" : undefined}
             className={cn(
               "shrink-0 rounded-md px-3 py-1.5 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -59,6 +60,7 @@ export function SubNav({ className, topics }: SubNavProps) {
               <Link
                 key={topic.id}
                 href={`/topic/${topic.id}`}
+                prefetch={false}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
                   "shrink-0 rounded-md px-3 py-1.5 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring",
