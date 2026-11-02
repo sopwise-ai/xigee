@@ -27,7 +27,7 @@ dependencies = [
     # RuntimeError: 'cryptography' package is required ... —— 那既不是我们用
     # OperationalError 兜住的"库不可用", 也不是能重试的错误。
     # dev 库是 5.7(mysql_native_password), 本地测试永远走不到这条路径, 只能靠声明兜住。
-    "cryptography>=44.0.0,<48.0",
+    "cryptography>=50.0.2,<51.0",
     "pydantic>=2.14.1,<3.0",
     "pydantic-settings>=2.16.0,<3.0",
     "url-normalize>=3.0.1,<4.0",
